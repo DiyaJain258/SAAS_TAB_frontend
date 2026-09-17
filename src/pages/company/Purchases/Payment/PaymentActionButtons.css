@@ -1,0 +1,41 @@
+/* Payment Action Buttons */
+.pp-action-buttons {
+    display: flex;
+    gap: 8px;
+}
+
+.pp-btn-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #e2e8f0;
+    background-color: #f1f5f9;
+    color: #475569;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.pp-btn-icon.view,
+.pp-btn-icon.edit,
+.pp-btn-icon.delete {
+    background-color: #f1f5f9;
+    color: #475569;
+    border: 1px solid #e2e8f0;
+}
+
+.pp-btn-icon:hover,
+.pp-btn-icon.view:hover,
+.pp-btn-icon.edit:hover,
+.pp-btn-icon.delete:hover {
+    background-color: #e2e8f0;
+    color: #0f172a;
+    border-color: #cbd5e1;
+}
+
+.pp-btn-icon svg {
+    display: block;
+    stroke: currentColor;
+}

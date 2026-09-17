@@ -1,0 +1,84 @@
+import axiosInstance from '../api/axiosInstance';
+
+const getCompanies = async () => {
+    const response = await axiosInstance.get('/companies');
+    return response.data;
+};
+
+const getCompanyById = async (id) => {
+    const response = await axiosInstance.get(`/companies/${id}`);
+    return response.data;
+};
+
+const createCompany = async (formData) => {
+    // formData is a FormData object
+    const response = await axiosInstance.post('/companies', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+    });
+    return response.data;
+};
+
+const updateCompany = async (id, formData) => {
+    // formData is a FormData object
+    const response = await axiosInstance.put(`/companies/${id}`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+    });
+    return response.data;
+};
+
+const deleteCompany = async (id) => {
+    const response = await axiosInstance.delete(`/companies/${id}`);
+    return response.data;
+};
+
+const getUserCompanies = async () => {
+    const response = await axiosInstance.get('/companies/user-companies');
+    return response.data;
+};
+
+const createUserCompany = async (formData) => {
+    const response = await axiosInstance.post('/companies/user-company', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+    });
+    return response.data;
+};
+
+const getPeriodLockSettings = async (companyId) => {
+    const url = companyId ? `/companies/${companyId}/period-lock` : '/companies/period-lock';
+    const response = await axiosInstance.get(url);
+    return response.data;
+};
+
+const updatePeriodLockSettings = async (companyId, data) => {
+    const url = companyId ? `/companies/${companyId}/period-lock` : '/companies/period-lock';
+    const response = await axiosInstance.put(url, data);
+    return response.data;
+};
+
+const getInvoiceDeletionPasswordStatus = async (companyId) => {
+    const url = companyId ? `/companies/${companyId}/invoice-deletion-password-status` : '/companies/invoice-deletion-password-status';
+    const response = await axiosInstance.get(url);
+    return response.data;
+};
+
+const updateInvoiceDeletionPassword = async (companyId, password) => {
+    const url = companyId ? `/companies/${companyId}/invoice-deletion-password` : '/companies/invoice-deletion-password';
+    const response = await axiosInstance.put(url, { password });
+    return response.data;
+};
+
+const companyService = {
+    getCompanies,
+    getCompanyById,
+    createCompany,
+    updateCompany,
+    deleteCompany,
+    getUserCompanies,
+    createUserCompany,
+    getPeriodLockSettings,
+    updatePeriodLockSettings,
+    getInvoiceDeletionPasswordStatus,
+    updateInvoiceDeletionPassword
+};
+
+export default companyService;

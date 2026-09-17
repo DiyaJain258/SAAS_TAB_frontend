@@ -1,0 +1,3517 @@
+import React, { useState, useRef, useEffect } from 'react';
+import {
+    Building2, Mail, Phone, MapPin, Globe,
+    Save, Upload, Image as ImageIcon,
+    Landmark, FileText, StickyNote, Check, Lock,
+    Plus, Trash2, X, Shield, ShieldCheck, ShieldAlert, Eye, EyeOff, Key, Loader2
+} from 'lucide-react';
+import toast, { Toaster } from 'react-hot-toast';
+import './CompanySettings.css';
+import axiosInstance from '../../../../api/axiosInstance';
+import companyService from '../../../../api/companyService';
+import passwordRequestService from '../../../../api/passwordRequestService';
+import GetCompanyId from '../../../../api/GetCompanyId';
+import warehouseService from '../../../../api/warehouseService';
+import { AuthContext } from '../../../../context/AuthContext';
+import { CompanyContext } from '../../../../context/CompanyContext';
+import { useTranslation } from '../../../../context/LanguageContext';
+import SmtpSettings from '../SmtpSettings/SmtpSettings';
+import { resolveLogoUrl } from '../../../../utils/logoUrl';
+import ceaArchitectsLogo from '../../../../assets/cea-architects-logo.png';
+
+const getContrastTextColor = (hexColor) => {
+    if (!hexColor) return '#ffffff';
+    const hex = hexColor.replace('#', '');
+    if (hex.length !== 6) return '#ffffff';
+    const r = parseInt(hex.substr(0, 2), 16);
+    const g = parseInt(hex.substr(2, 2), 16);
+    const b = parseInt(hex.substr(4, 2), 16);
+    const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
+    return (yiq >= 170) ? '#1e293b' : '#ffffff';
+};
+
+const isLightColor = (color) => {
+    if (!color) return true;
+    const c = color.toLowerCase().trim();
+    if (c === '#dedede' || c === '#ffffff' || c === '#f1f5f9' || c === '#e2e8f0') return true;
+    const hex = c.replace('#', '');
+    if (hex.length !== 6) return false;
+    const r = parseInt(hex.substring(0, 2), 16) / 255;
+    const g = parseInt(hex.substring(2, 4), 16) / 255;
+    const b = parseInt(hex.substring(4, 6), 16) / 255;
+    const toLinear = v => v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+    const lum = 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
+    return lum > 0.5;
+};
+
+const getTintBg = (hexColor, alpha = 0.08) => {
+    if (!hexColor) return '#f8fafc';
+    const hex = hexColor.replace('#', '');
+    if (hex.length !== 6) return '#f8fafc';
+    const r = parseInt(hex.substr(0, 2), 16);
+    const g = parseInt(hex.substr(2, 2), 16);
+    const b = parseInt(hex.substr(4, 2), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+};
+const salesTypes = ['invoice', 'salesquotation', 'salesorder', 'deliverychallan', 'salesreturn', 'posinvoice', 'receipt'];
+const purchaseTypes = ['purchasequotation', 'purchaseorder', 'purchasebill', 'purchasereturn', 'payment'];
+const otherTypes = ['goodsreceiptnote', 'voucher', 'stocktransfer', 'adjustment'];
+
+const salesTitlesList = [
+    { key: 'invoice', label: 'Sales Invoice', placeholder: 'INVOICE' },
+    { key: 'posinvoice', label: 'POS Invoice', placeholder: 'INVOICE' },
+    { key: 'receipt', label: 'Customer Receipt', placeholder: 'RECEIPT' },
+    { key: 'salesreturn', label: 'Credit Note (Sales Return)', placeholder: 'SALES RETURN' },
+    { key: 'salesorder', label: 'Sales Order', placeholder: 'SALES ORDER' },
+    { key: 'quotation', label: 'Quotation', placeholder: 'QUOTATION' },
+    { key: 'deliverychallan', label: 'Delivery Challan', placeholder: 'DELIVERY CHALLAN' },
+];
+
+const purchaseTitlesList = [
+    { key: 'purchasequotation', label: 'Purchase Quotation', placeholder: 'PURCHASE QUOTATION' },
+    { key: 'purchaseorder', label: 'Purchase Order', placeholder: 'PURCHASE ORDER' },
+    { key: 'purchasebill', label: 'Purchase Bill', placeholder: 'PURCHASE BILL' },
+    { key: 'purchasereturn', label: 'Debit Note (Purchase Return)', placeholder: 'PURCHASE RETURN' },
+    { key: 'payment', label: 'Purchase Payment', placeholder: 'PAYMENT VOUCHER' },
+    { key: 'purchasepayment', label: 'Purchase Payment Receipt', placeholder: 'PAYMENT' },
+];
+
+const otherTitlesList = [
+    { key: 'goodsreceipt', label: 'Goods Receipt Note', placeholder: 'GOODS RECEIPT NOTE' },
+    { key: 'journalvoucher', label: 'Journal Voucher', placeholder: 'JOURNAL VOUCHER' },
+    { key: 'expense', label: 'Expense Voucher', placeholder: 'EXPENSE VOUCHER' },
+    { key: 'income', label: 'Income Voucher', placeholder: 'INCOME VOUCHER' },
+    { key: 'contravoucher', label: 'Contra Voucher', placeholder: 'CONTRA VOUCHER' },
+    { key: 'addcapital', label: 'Add Capital Voucher', placeholder: 'ADD CAPITAL' },
+    { key: 'drawingcapital', label: 'Drawing Capital Voucher', placeholder: 'DRAWING CAPITAL' }
+];
+
+const WORLD_COUNTRIES = [
+    "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Antigua and Barbuda", "Argentina", "Armenia", "Australia", "Austria", "Azerbaijan",
+    "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belarus", "Belgium", "Belize", "Benin", "Bhutan", "Bolivia", "Bosnia and Herzegovina", "Botswana", "Brazil", "Brunei", "Bulgaria", "Burkina Faso", "Burundi",
+    "Cabo Verde", "Cambodia", "Cameroon", "Canada", "Central African Republic", "Chad", "Chile", "China", "Colombia", "Comoros", "Congo", "Costa Rica", "Croatia", "Cuba", "Cyprus", "Czech Republic",
+    "Denmark", "Djibouti", "Dominica", "Dominican Republic",
+    "Ecuador", "Egypt", "El Salvador", "Equatorial Guinea", "Eritrea", "Estonia", "Eswatini", "Ethiopia",
+    "Fiji", "Finland", "France",
+    "Gabon", "Gambia", "Georgia", "Germany", "Ghana", "Greece", "Grenada", "Guatemala", "Guinea", "Guinea-Bissau", "Guyana",
+    "Haiti", "Honduras", "Hungary",
+    "Iceland", "India", "Indonesia", "Iran", "Iraq", "Ireland", "Israel", "Italy", "Ivory Coast",
+    "Jamaica", "Japan", "Jordan",
+    "Kazakhstan", "Kenya", "Kiribati", "Kuwait", "Kyrgyzstan",
+    "Laos", "Latvia", "Lebanon", "Lesotho", "Liberia", "Libya", "Liechtenstein", "Lithuania", "Luxembourg",
+    "Madagascar", "Malawi", "Malaysia", "Maldives", "Mali", "Malta", "Marshall Islands", "Mauritania", "Mauritius", "Mexico", "Micronesia", "Moldova", "Monaco", "Mongolia", "Montenegro", "Morocco", "Mozambique", "Myanmar",
+    "Namibia", "Nauru", "Nepal", "Netherlands", "New Zealand", "Nicaragua", "Niger", "Nigeria", "North Korea", "North Macedonia", "Norway",
+    "Oman",
+    "Pakistan", "Palau", "Palestine", "Panama", "Papua New Guinea", "Paraguay", "Peru", "Philippines", "Poland", "Portugal",
+    "Qatar",
+    "Romania", "Russia", "Rwanda",
+    "Saint Kitts and Nevis", "Saint Lucia", "Saint Vincent and the Grenadines", "Samoa", "San Marino", "Sao Tome and Principe", "Saudi Arabia", "Senegal", "Serbia", "Seychelles", "Sierra Leone", "Singapore", "Slovakia", "Slovenia", "Solomon Islands", "Somalia", "South Africa", "South Korea", "South Sudan", "Spain", "Sri Lanka", "Sudan", "Suriname", "Sweden", "Switzerland", "Syria", "Taiwan",
+    "Tajikistan", "Tanzania", "Thailand", "Timor-Leste", "Togo", "Tonga", "Trinidad and Tobago", "Tunisia", "Turkey", "Turkmenistan", "Tuvalu",
+    "Uganda", "Ukraine", "United Arab Emirates", "United Kingdom", "United States", "Uruguay", "Uzbekistan",
+    "Vanuatu", "Vatican City", "Venezuela", "Vietnam",
+    "Yemen",
+    "Zambia", "Zimbabwe"
+];
+
+const CountrySelect = ({ value, onChange }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const [search, setSearch] = useState('');
+    const dropdownRef = useRef(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    const filteredCountries = WORLD_COUNTRIES.filter(c =>
+        c.toLowerCase().includes(search.toLowerCase())
+    );
+
+    return (
+        <div className="custom-country-select-container" ref={dropdownRef} style={{ position: 'relative', width: '100%' }}>
+            <div
+                className="custom-country-select-header"
+                onClick={() => setIsOpen(!isOpen)}
+                style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '8px 12px',
+                    backgroundColor: '#fff',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '0.9rem',
+                    minHeight: '38px',
+                    userSelect: 'none'
+                }}
+            >
+                <span style={{ color: value ? '#1f2937' : '#9ca3af', fontWeight: value ? '500' : '400' }}>
+                    {value || 'Select Country...'}
+                </span>
+                <span style={{ fontSize: '0.75rem', color: '#6b7280', transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}>▼</span>
+            </div>
+
+            {isOpen && (
+                <div
+                    className="custom-country-select-dropdown"
+                    style={{
+                        position: 'absolute',
+                        top: '100%',
+                        left: 0,
+                        right: 0,
+                        marginTop: '4px',
+                        backgroundColor: '#fff',
+                        border: '1px solid #e5e7eb',
+                        borderRadius: '6px',
+                        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+                        zIndex: 9999,
+                        maxHeight: '260px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        overflow: 'hidden'
+                    }}
+                >
+                    <div style={{ padding: '8px', borderBottom: '1px solid #e5e7eb', backgroundColor: '#f9fafb' }}>
+                        <input
+                            type="text"
+                            placeholder="🔍 Search country..."
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                            autoFocus
+                            style={{
+                                width: '100%',
+                                padding: '7px 10px',
+                                fontSize: '0.85rem',
+                                border: '1px solid #d1d5db',
+                                borderRadius: '4px',
+                                outline: 'none'
+                            }}
+                        />
+                    </div>
+                    <div style={{ overflowY: 'auto', flex: 1, maxHeight: '200px' }}>
+                        {filteredCountries.length > 0 ? (
+                            filteredCountries.map(country => {
+                                const isSelected = value === country;
+                                return (
+                                    <div
+                                        key={country}
+                                        onClick={() => {
+                                            onChange(country);
+                                            setIsOpen(false);
+                                            setSearch('');
+                                        }}
+                                        style={{
+                                            padding: '8px 12px',
+                                            fontSize: '0.875rem',
+                                            cursor: 'pointer',
+                                            backgroundColor: isSelected ? 'rgba(30, 41, 59, 0.2)' : 'transparent',
+                                            color: isSelected ? '#1f2937' : '#374151',
+                                            fontWeight: isSelected ? '600' : '400',
+                                            transition: 'background-color 0.15s ease'
+                                        }}
+                                        onMouseEnter={(e) => {
+                                            if (!isSelected) e.currentTarget.style.backgroundColor = '#f3f4f6';
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            if (!isSelected) e.currentTarget.style.backgroundColor = 'transparent';
+                                        }}
+                                    >
+                                        {country}
+                                    </div>
+                                );
+                            })
+                        ) : (
+                            <div style={{ padding: '12px', textAlign: 'center', color: '#9ca3af', fontSize: '0.85rem' }}>
+                                No country found
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+const CompanySettings = () => {
+    const { fetchCompanySettings } = React.useContext(CompanyContext);
+    const { hasPermission, refreshCompanies } = React.useContext(AuthContext);
+    const { changeLanguageByCountry } = useTranslation();
+    const [activeTab, setActiveTab] = useState('general');
+    const [logoPreview, setLogoPreview] = useState(null);
+    const [warehouses, setWarehouses] = useState([]);
+    const [customFieldsConfig, setCustomFieldsConfig] = useState([]);
+    const [numberingSettings, setNumberingSettings] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [companyId, setCompanyId] = useState(null);
+    const [paymentPreviewType, setPaymentPreviewType] = useState('receipt');
+
+    // Invoice Settings State
+    const [invoiceSettings, setInvoiceSettings] = useState({
+        template: 'Light Gray',
+        color: '#dedede',
+        showQr: true,
+        logo: null,
+        logoPreview: null
+    });
+
+    // Saved Templates for this Company: { [templateName]: { color, labels, tableHeaders, showQr } }
+    const [savedTemplates, setSavedTemplates] = useState({});
+    const [showAddTemplateModal, setShowAddTemplateModal] = useState(false);
+    const [newTemplateName, setNewTemplateName] = useState('');
+    const [newTemplateColor, setNewTemplateColor] = useState('#e11d48');
+
+    // Invoice Deletion Protection State
+    const [hasDeletionPassword, setHasDeletionPassword] = useState(false);
+    const [deletionPasswordInput, setDeletionPasswordInput] = useState('');
+    const [confirmDeletionPasswordInput, setConfirmDeletionPasswordInput] = useState('');
+    const [showDeletionPassword, setShowDeletionPassword] = useState(false);
+    const [isSavingDeletionPassword, setIsSavingDeletionPassword] = useState(false);
+    const [showChangeDeletionPassword, setShowChangeDeletionPassword] = useState(false);
+
+    // Custom Table Headers State
+    const [tableHeaders, setTableHeaders] = useState({
+        item: 'Item',
+        quantity: 'Quantity',
+        rate: 'Rate',
+        discount: 'Discount',
+        tax: 'VAT (%)',
+        price: 'Price',
+        warehouse: 'Warehouse',
+        uom: 'UOM'
+    });
+
+    // Custom Document Labels State
+    const [invoiceLabels, setInvoiceLabels] = useState({
+        billTo: 'Bill To:',
+        shipTo: 'Ship To:',
+        subTotal: 'Sub Total',
+        tax: 'VAT',
+        total: 'Total',
+        number: 'Number:',
+        issue: 'Issue:',
+        dueDate: 'Due Date:',
+        showHeader: true,
+        showFooter: true,
+        showWarehouse: true,
+        showQty: true,
+        showUom: true,
+        showRate: true,
+        showTax: true,
+        showDiscount: true
+    });
+
+    // Receipt Settings State
+    const [receiptSettings, setReceiptSettings] = useState({
+        template: 'New York',
+        color: '#004aad',
+        showQr: true,
+        logo: null,
+        logoPreview: null
+    });
+
+    // Receipt Table Headers State
+    const [receiptTableHeaders, setReceiptTableHeaders] = useState({
+        invoiceNumber: 'Invoice Number',
+        invoiceDate: 'Invoice Date',
+        invoiceAmount: 'Invoice Amount',
+        allocatedAmount: 'Allocated Amount',
+        balanceDue: 'Balance Due'
+    });
+
+    // Receipt Custom Labels State
+    const [receiptLabels, setReceiptLabels] = useState({
+        number: 'Receipt No:',
+        date: 'Payment Date:',
+        invoiceRef: 'Invoice Ref:',
+        receivedFrom: 'Received From:',
+        receivedInto: 'Received Into:',
+        mode: 'Payment Mode:',
+        refNo: 'Ref No:',
+        discount: 'Discount Allowed:',
+        discountAccount: 'Discount Account:',
+        notes: 'Remarks / Notes:',
+        signature: 'Authorized Signature',
+        satisfaction: 'The sum of {amount} {discountText} was received in full satisfaction of the mentioned account.'
+    });
+
+    // Payment Settings State
+    const [paymentSettings, setPaymentSettings] = useState({
+        template: 'New York',
+        color: '#004aad',
+        showQr: true,
+        logo: null,
+        logoPreview: null
+    });
+
+    // Payment Table Headers State
+    const [paymentTableHeaders, setPaymentTableHeaders] = useState({
+        billNumber: 'Bill Number',
+        billDate: 'Bill Date',
+        billAmount: 'Bill Amount',
+        allocatedAmount: 'Allocated Amount',
+        balanceDue: 'Balance Due'
+    });
+
+    // Payment Custom Labels State
+    const [paymentLabels, setPaymentLabels] = useState({
+        number: 'Receipt No:',
+        date: 'Payment Date:',
+        invoiceRef: 'Invoice Ref:',
+        receivedFrom: 'RECEIVED FROM:',
+        paidFrom: 'Paid From:',
+        mode: 'Payment Mode:',
+        refNo: 'Ref No:',
+        discount: 'Discount Received:',
+        discountAccount: 'Discount Account:',
+        notes: 'Remarks / Notes:',
+        signature: 'AUTHORIZED SIGNATURE',
+        satisfaction: 'The sum of {amount} {discountText} was received in full satisfaction of the mentioned account.'
+    });
+
+    // Inventory Settings State
+    const [inventorySettings, setInventorySettings] = useState({
+        reserveOnQuotation: false,
+        reserveOnSO: false,
+        challanAction: 'ISSUE',
+        valuationMethod: 'WAC',
+        negativeStockAllow: true,
+        batchTracking: false,
+        expiryTracking: false,
+        autoCogsEntry: true,
+        multiWarehouse: false,
+        defaultSalesWarehouseId: '',
+        defaultPurchaseWarehouseId: ''
+    });
+
+    // Document Titles Custom Settings State
+    const [documentTitles, setDocumentTitles] = useState({
+        invoice: '',
+        receipt: '',
+        payment: '',
+        salesreturn: '',
+        purchasebill: '',
+        purchasepayment: '',
+        purchasereturn: '',
+        salesorder: '',
+        quotation: '',
+        purchasequotation: '',
+        purchaseorder: '',
+        deliverychallan: '',
+        goodsreceipt: '',
+        posinvoice: '',
+        journalvoucher: '',
+        expense: '',
+        income: '',
+        contravoucher: '',
+        addcapital: '',
+        drawingcapital: ''
+    });
+
+    const fileInputRef = useRef(null);
+    const invoiceLogoInputRef = useRef(null);
+    const receiptLogoInputRef = useRef(null);
+    const paymentLogoInputRef = useRef(null);
+
+    // Form data state
+    const [formData, setFormData] = useState({
+        name: 'Kiaan Solutions',
+        email: 'info@kiaan.com',
+        phone: '+1 234 567 890',
+        website: '',
+        address: '',
+        city: 'New York',
+        state: 'NY',
+        zip: '10001',
+        country: 'Ireland',
+        currency: 'EUR',
+        bankName: '',
+        accountHolder: '',
+        accountName: '',
+        accountNumber: '',
+        iban: '',
+        bic: '',
+        sortCode: '',
+        ifsc: '',
+        vatNumber: '',
+        defaultVatRate: '23',
+        defaultVatRateId: '',
+        isVatRegistered: true,
+        terms: '',
+        termsInvoice: '',
+        termsReceipt: '',
+        termsPurchase: '',
+        termsSalesOrder: '',
+        termsQuotation: '',
+        termsCreditNote: '',
+        notes: ''
+    });
+
+    const colors = [
+        '#dedede', '#475569', '#1e293b', '#004aad', '#3b82f6', '#06b6d4', '#10b981',
+        '#f59e0b', '#eab308', '#ef4444', '#f43f5e', '#8b5cf6', '#6366f1', '#4b5563', '#0f172a', '#000000'
+    ];
+
+    const currencies = [
+        { code: 'EUR', name: 'Euro (EUR €)' },
+        { code: 'GBP', name: 'British Pound (GBP £)' },
+        { code: 'USD', name: 'US Dollar (USD $)' },
+        { code: 'INR', name: 'Indian Rupee (INR ₹)' }
+    ];
+
+    const availableTemplates = Array.from(new Set([
+        'Light Gray',
+        ...Object.keys(savedTemplates || {}),
+        invoiceSettings.template
+    ].filter(Boolean)));
+
+    useEffect(() => {
+        const fetchCompany = async () => {
+            try {
+                const companyIdFromStorage = GetCompanyId();
+                if (!companyIdFromStorage) {
+                    toast.error('Company ID not found. Please login again.');
+                    return;
+                }
+                setCompanyId(companyIdFromStorage);
+
+                // Fetch warehouses
+                try {
+                    const whRes = await warehouseService.getWarehouses(companyIdFromStorage);
+                    if (whRes && whRes.success) {
+                        setWarehouses(whRes.data);
+                    } else if (Array.isArray(whRes)) {
+                        setWarehouses(whRes);
+                    }
+                } catch (err) {
+                    console.error('Error fetching warehouses in CompanySettings:', err);
+                }
+
+                const res = await companyService.getById(companyIdFromStorage);
+                const data = res.data;
+
+                setFormData({
+                    name: data.name || '',
+                    email: data.email || '',
+                    phone: data.phone || '',
+                    website: data.website || '',
+                    address: data.address || '',
+                    city: data.city || '',
+                    state: data.state || '',
+                    zip: data.zip || '',
+                    country: data.country || 'United States',
+                    currency: data.currency || 'USD',
+                    bankName: data.bankName || '',
+                    accountHolder: data.accountHolder || data.accountName || '',
+                    accountName: data.accountName || data.accountHolder || '',
+                    accountNumber: data.accountNumber || '',
+                    iban: data.iban || '',
+                    bic: data.bic || '',
+                    sortCode: data.sortCode || '',
+                    ifsc: data.ifsc || '',
+                    vatNumber: data.vatNumber || data.gstNumber || '',
+                    defaultVatRate: data.defaultVatRate ? data.defaultVatRate.toString() : '23',
+                    defaultVatRateId: data.defaultVatRateId || '',
+                    isVatRegistered: data.isVatRegistered !== undefined ? data.isVatRegistered : true,
+                    terms: data.terms || '',
+                    termsInvoice: data.termsInvoice || '',
+                    termsReceipt: data.termsReceipt || '',
+                    termsPurchase: data.termsPurchase || '',
+                    termsSalesOrder: data.termsSalesOrder || '',
+                    termsQuotation: data.termsQuotation || '',
+                    termsCreditNote: data.termsCreditNote || '',
+                    notes: data.notes || ''
+                });
+
+                if (data.invoiceLabels) {
+                    try {
+                        const parsedLabels = typeof data.invoiceLabels === 'string'
+                            ? JSON.parse(data.invoiceLabels)
+                            : data.invoiceLabels;
+                        if (parsedLabels && parsedLabels.savedTemplates && typeof parsedLabels.savedTemplates === 'object') {
+                            setSavedTemplates(parsedLabels.savedTemplates);
+                        }
+                    } catch (e) {
+                        console.error('Error parsing savedTemplates:', e);
+                    }
+                }
+
+                if (data.hasInvoiceDeletionPassword !== undefined) {
+                    setHasDeletionPassword(Boolean(data.hasInvoiceDeletionPassword));
+                }
+
+                let fetchedTpl = data.invoiceTemplate || 'Light Gray';
+                if (fetchedTpl === 'Light Grey' || fetchedTpl === 'Standard VAT (CEA)') fetchedTpl = 'Light Gray';
+                const isLightTpl = fetchedTpl.toLowerCase().includes('light gr') || fetchedTpl === 'Standard VAT (CEA)';
+                setInvoiceSettings({
+                    template: fetchedTpl,
+                    color: (data.invoiceColor && data.invoiceColor !== '#000000') ? data.invoiceColor : (isLightTpl ? '#dedede' : '#475569'),
+                    showQr: data.showQrCode !== undefined ? data.showQrCode : true,
+                    logo: null,
+                    logoPreview: resolveLogoUrl(data.invoiceLogo) || null
+                });
+
+                if (data.invoiceTableHeaders) {
+                    try {
+                        const headers = typeof data.invoiceTableHeaders === 'string'
+                            ? JSON.parse(data.invoiceTableHeaders)
+                            : data.invoiceTableHeaders;
+                        setTableHeaders({
+                            item: headers.item || 'Item',
+                            quantity: headers.quantity || 'Quantity',
+                            rate: headers.rate || 'Rate',
+                            discount: headers.discount || 'Discount',
+                            tax: headers.tax || 'VAT (%)',
+                            price: headers.price || 'Price',
+                            warehouse: headers.warehouse || 'Warehouse',
+                            uom: headers.uom || 'UOM'
+                        });
+                    } catch (e) {
+                        console.error('Error parsing table headers:', e);
+                    }
+                }
+
+                if (data.invoiceLabels) {
+                    try {
+                        const labels = typeof data.invoiceLabels === 'string'
+                            ? JSON.parse(data.invoiceLabels)
+                            : data.invoiceLabels;
+                        setInvoiceLabels({
+                            billTo: labels.billTo || 'Bill To:',
+                            shipTo: labels.shipTo || 'Ship To:',
+                            subTotal: labels.subTotal || 'Sub Total',
+                            tax: labels.tax || 'VAT',
+                            total: labels.total || 'Total',
+                            number: labels.number || 'Number:',
+                            issue: labels.issue || 'Issue:',
+                            dueDate: labels.dueDate || 'Due Date:',
+                            showHeader: labels.showHeader !== undefined ? labels.showHeader : true,
+                            showFooter: labels.showFooter !== undefined ? labels.showFooter : true,
+                            showWarehouse: labels.showWarehouse !== undefined ? labels.showWarehouse : true,
+                            showQty: labels.showQty !== undefined ? labels.showQty : true,
+                            showUom: labels.showUom !== undefined ? labels.showUom : true,
+                            showRate: labels.showRate !== undefined ? labels.showRate : true,
+                            showTax: labels.showTax !== undefined ? labels.showTax : true,
+                            showDiscount: labels.showDiscount !== undefined ? labels.showDiscount : true
+                        });
+                    } catch (e) {
+                        console.error('Error parsing invoice labels:', e);
+                    }
+                }
+
+                // Receipt Settings
+                setReceiptSettings({
+                    template: data.receiptTemplate || 'New York',
+                    color: data.receiptColor || '#004aad',
+                    showQr: data.showQrCode !== undefined ? data.showQrCode : true,
+                    logo: null,
+                    logoPreview: resolveLogoUrl(data.receiptLogo) || null
+                });
+
+                if (data.receiptTableHeaders) {
+                    try {
+                        const headers = typeof data.receiptTableHeaders === 'string'
+                            ? JSON.parse(data.receiptTableHeaders)
+                            : data.receiptTableHeaders;
+                        setReceiptTableHeaders({
+                            invoiceNumber: headers.invoiceNumber || 'Invoice Number',
+                            invoiceDate: headers.invoiceDate || 'Invoice Date',
+                            invoiceAmount: headers.invoiceAmount || 'Invoice Amount',
+                            allocatedAmount: headers.allocatedAmount || 'Allocated Amount',
+                            balanceDue: headers.balanceDue || 'Balance Due'
+                        });
+                    } catch (e) {
+                        console.error('Error parsing receipt table headers:', e);
+                    }
+                }
+
+                if (data.receiptLabels) {
+                    try {
+                        const labels = typeof data.receiptLabels === 'string'
+                            ? JSON.parse(data.receiptLabels)
+                            : data.receiptLabels;
+                        setReceiptLabels({
+                            number: labels.number || 'Receipt No:',
+                            date: labels.date || 'Payment Date:',
+                            invoiceRef: labels.invoiceRef || 'Invoice Ref:',
+                            receivedFrom: labels.receivedFrom || 'Received From:',
+                            receivedInto: labels.receivedInto || 'Received Into:',
+                            mode: labels.mode || 'Payment Mode:',
+                            refNo: labels.refNo || 'Ref No:',
+                            discount: labels.discount || 'Discount Allowed:',
+                            discountAccount: labels.discountAccount || 'Discount Account:',
+                            notes: labels.notes || 'Remarks / Notes:',
+                            signature: labels.signature || 'Authorized Signature',
+                            satisfaction: labels.satisfaction || 'The sum of {amount} {discountText} was received in full satisfaction of the mentioned account.'
+                        });
+                    } catch (e) {
+                        console.error('Error parsing receipt labels:', e);
+                    }
+                }
+
+                // Payment Settings
+                setPaymentSettings({
+                    template: data.paymentTemplate || 'New York',
+                    color: data.paymentColor || '#004aad',
+                    showQr: data.showQrCode !== undefined ? data.showQrCode : true,
+                    logo: null,
+                    logoPreview: resolveLogoUrl(data.paymentLogo) || null
+                });
+
+                if (data.paymentTableHeaders) {
+                    try {
+                        const headers = typeof data.paymentTableHeaders === 'string'
+                            ? JSON.parse(data.paymentTableHeaders)
+                            : data.paymentTableHeaders;
+                        setPaymentTableHeaders({
+                            billNumber: headers.billNumber || 'Bill Number',
+                            billDate: headers.billDate || 'Bill Date',
+                            billAmount: headers.billAmount || 'Bill Amount',
+                            allocatedAmount: headers.allocatedAmount || 'Allocated Amount',
+                            balanceDue: headers.balanceDue || 'Balance Due'
+                        });
+                    } catch (e) {
+                        console.error('Error parsing payment table headers:', e);
+                    }
+                }
+
+                if (data.paymentLabels) {
+                    try {
+                        const labels = typeof data.paymentLabels === 'string'
+                            ? JSON.parse(data.paymentLabels)
+                            : data.paymentLabels;
+                        setPaymentLabels({
+                            number: labels.number || 'Receipt No:',
+                            date: labels.date || 'Payment Date:',
+                            invoiceRef: labels.invoiceRef || 'Invoice Ref:',
+                            receivedFrom: labels.receivedFrom || 'RECEIVED FROM:',
+                            paidFrom: labels.paidFrom || 'Paid From:',
+                            mode: labels.mode || 'Payment Mode:',
+                            refNo: labels.refNo || 'Ref No:',
+                            discount: labels.discount || 'Discount Received:',
+                            discountAccount: labels.discountAccount || 'Discount Account:',
+                            notes: labels.notes || 'Remarks / Notes:',
+                            signature: labels.signature || 'AUTHORIZED SIGNATURE',
+                            satisfaction: labels.satisfaction || 'The sum of {amount} {discountText} was received in full satisfaction of the mentioned account.'
+                        });
+                    } catch (e) {
+                        console.error('Error parsing payment labels:', e);
+                    }
+                }
+
+                if (data.inventoryConfig) {
+                    const invCfg = typeof data.inventoryConfig === 'string'
+                        ? JSON.parse(data.inventoryConfig)
+                        : data.inventoryConfig;
+                    setInventorySettings({
+                        reserveOnQuotation: invCfg.reserveOnQuotation || false,
+                        reserveOnSO: invCfg.reserveOnSO || false,
+                        challanAction: invCfg.challanAction || 'ISSUE',
+                        valuationMethod: invCfg.valuationMethod || 'WAC',
+                        negativeStockAllow: invCfg.negativeStockAllow !== false,
+                        batchTracking: invCfg.batchTracking || false,
+                        expiryTracking: invCfg.expiryTracking || false,
+                        autoCogsEntry: invCfg.autoCogsEntry !== false,
+                        multiWarehouse: invCfg.multiWarehouse || false,
+                        defaultSalesWarehouseId: invCfg.defaultSalesWarehouseId || '',
+                        defaultPurchaseWarehouseId: invCfg.defaultPurchaseWarehouseId || ''
+                    });
+                }
+
+                if (data.logo) {
+                    setLogoPreview(resolveLogoUrl(data.logo));
+                }
+                if (data.customFieldsConfig) {
+                    try {
+                        const parsed = typeof data.customFieldsConfig === 'string'
+                            ? JSON.parse(data.customFieldsConfig)
+                            : data.customFieldsConfig;
+                        setCustomFieldsConfig(Array.isArray(parsed) ? parsed : []);
+                    } catch (e) {
+                        console.error('Error parsing customFieldsConfig:', e);
+                        setCustomFieldsConfig([]);
+                    }
+                } else {
+                    setCustomFieldsConfig([]);
+                }
+
+                if (data.documentTitles) {
+                    try {
+                        const parsedTitles = typeof data.documentTitles === 'string'
+                            ? JSON.parse(data.documentTitles)
+                            : data.documentTitles;
+                        setDocumentTitles(prev => ({
+                            ...prev,
+                            ...parsedTitles
+                        }));
+                    } catch (e) {
+                        console.error('Error parsing documentTitles:', e);
+                    }
+                }
+
+                // Fetch Serial Numbering Settings
+                try {
+                    const numberingRes = await axiosInstance.get(`/companies/${companyIdFromStorage}/numbering-settings`);
+                    if (numberingRes.data && numberingRes.data.success) {
+                        setNumberingSettings(numberingRes.data.data);
+                    }
+                } catch (e) {
+                    console.error('Error fetching numbering settings:', e);
+                }
+            } catch (error) {
+                console.error('Failed to fetch company data:', error);
+                toast.error('Failed to load company data: ' + (error.response?.data?.message || error.message));
+            }
+        };
+        fetchCompany();
+    }, []);
+
+    const handleLogoChange = (e, type = 'company') => {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                if (type === 'company') {
+                    setLogoPreview(reader.result);
+                    setFormData(prev => ({ ...prev, logoFile: file }));
+                } else if (type === 'invoice') {
+                    setInvoiceSettings(prev => ({
+                        ...prev,
+                        logo: file,
+                        logoPreview: reader.result
+                    }));
+                }
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+
+    const handleUploadClick = (ref) => {
+        ref.current.click();
+    };
+
+    const handleTemplateChange = (newTpl) => {
+        if (!newTpl) return;
+        if (newTpl === '__add_new__') {
+            setShowAddTemplateModal(true);
+            return;
+        }
+
+        // Cache current template's settings
+        const currentActive = invoiceSettings.template;
+        const updatedTemplates = {
+            ...savedTemplates,
+            [currentActive]: {
+                color: invoiceSettings.color,
+                showQr: invoiceSettings.showQr,
+                labels: { ...invoiceLabels },
+                tableHeaders: { ...tableHeaders }
+            }
+        };
+        setSavedTemplates(updatedTemplates);
+
+        // Load new template if it exists in savedTemplates
+        const targetConfig = updatedTemplates[newTpl];
+        const isLightGrayTpl = newTpl === 'Light Gray' || newTpl === 'Light Grey' || newTpl === 'Standard VAT (CEA)';
+        const defaultTplColor = isLightGrayTpl ? '#dedede' : undefined;
+
+        if (targetConfig) {
+            setInvoiceSettings(prev => ({
+                ...prev,
+                template: newTpl,
+                color: targetConfig.color || defaultTplColor || prev.color,
+                showQr: targetConfig.showQr !== undefined ? targetConfig.showQr : prev.showQr
+            }));
+            if (targetConfig.labels) {
+                setInvoiceLabels(targetConfig.labels);
+            }
+            if (targetConfig.tableHeaders) {
+                setTableHeaders(targetConfig.tableHeaders);
+            }
+        } else {
+            setInvoiceSettings(prev => ({ 
+                ...prev, 
+                template: newTpl,
+                color: defaultTplColor || prev.color
+            }));
+        }
+    };
+
+    const handleCreateNewTemplate = () => {
+        const trimmed = (newTemplateName || '').trim();
+        if (!trimmed) {
+            toast.error('Please enter a template name.');
+            return;
+        }
+        if (availableTemplates.includes(trimmed)) {
+            toast.error('A template with this name already exists.');
+            return;
+        }
+
+        const updatedTemplates = {
+            ...savedTemplates,
+            [invoiceSettings.template]: {
+                color: invoiceSettings.color,
+                showQr: invoiceSettings.showQr,
+                labels: { ...invoiceLabels },
+                tableHeaders: { ...tableHeaders }
+            },
+            [trimmed]: {
+                color: newTemplateColor || invoiceSettings.color || '#e11d48',
+                showQr: invoiceSettings.showQr,
+                labels: { ...invoiceLabels },
+                tableHeaders: { ...tableHeaders }
+            }
+        };
+
+        setSavedTemplates(updatedTemplates);
+        setInvoiceSettings(prev => ({
+            ...prev,
+            template: trimmed,
+            color: newTemplateColor || prev.color
+        }));
+        setNewTemplateName('');
+        setShowAddTemplateModal(false);
+        toast.success(`Template "${trimmed}" created! Click Save Changes to store.`);
+    };
+
+    const handleDeleteTemplate = (tplNameToDelete) => {
+        if (tplNameToDelete === 'Light Gray' || tplNameToDelete === 'Light Grey' || tplNameToDelete === 'Standard VAT (CEA)') {
+            toast.error(`${tplNameToDelete} is a default template and cannot be deleted.`);
+            return;
+        }
+        const updated = { ...savedTemplates };
+        delete updated[tplNameToDelete];
+        setSavedTemplates(updated);
+        handleTemplateChange('Light Gray');
+        toast.success(`Template "${tplNameToDelete}" deleted.`);
+    };
+
+    const handleSave = async () => {
+        if (!companyId) {
+            toast.error('Company ID not found. Please refresh the page.');
+            return;
+        }
+
+        setLoading(true);
+        try {
+            const formDataToSend = new FormData();
+
+            Object.keys(formData).forEach(key => {
+                if (key !== 'logoFile' && formData[key] !== null && formData[key] !== undefined) {
+                    formDataToSend.append(key, formData[key]);
+                }
+            });
+
+            if (formData.logoFile) {
+                formDataToSend.append('logo', formData.logoFile);
+            }
+            if (invoiceSettings.logo) {
+                formDataToSend.append('invoiceLogo', invoiceSettings.logo);
+            }
+
+            formDataToSend.append('invoiceTemplate', invoiceSettings.template);
+            formDataToSend.append('invoiceColor', invoiceSettings.color);
+            formDataToSend.append('showQrCode', invoiceSettings.showQr);
+            formDataToSend.append('inventoryConfig', JSON.stringify(inventorySettings));
+            formDataToSend.append('invoiceTableHeaders', JSON.stringify(tableHeaders));
+
+            const fullInvoiceLabels = {
+                ...invoiceLabels,
+                savedTemplates: {
+                    ...savedTemplates,
+                    [invoiceSettings.template]: {
+                        color: invoiceSettings.color,
+                        showQr: invoiceSettings.showQr,
+                        labels: { ...invoiceLabels },
+                        tableHeaders: { ...tableHeaders }
+                    }
+                }
+            };
+            formDataToSend.append('invoiceLabels', JSON.stringify(fullInvoiceLabels));
+
+            // Save the synchronized receipt & payment settings to DB
+            formDataToSend.append('receiptTemplate', receiptSettings.template);
+            formDataToSend.append('receiptColor', receiptSettings.color);
+            formDataToSend.append('receiptTableHeaders', JSON.stringify(receiptTableHeaders));
+            formDataToSend.append('receiptLabels', JSON.stringify(receiptLabels));
+
+            formDataToSend.append('paymentTemplate', paymentSettings.template);
+            formDataToSend.append('paymentColor', paymentSettings.color);
+            formDataToSend.append('paymentTableHeaders', JSON.stringify(paymentTableHeaders));
+            formDataToSend.append('paymentLabels', JSON.stringify(paymentLabels));
+            formDataToSend.append('customFieldsConfig', JSON.stringify(customFieldsConfig));
+            formDataToSend.append('documentTitles', JSON.stringify(documentTitles));
+
+            await companyService.update(companyId, formDataToSend);
+
+            // Save serial numbering settings if loaded
+            if (numberingSettings.length > 0) {
+                await axiosInstance.put(`/companies/${companyId}/numbering-settings`, {
+                    settings: numberingSettings
+                });
+            }
+
+            await fetchCompanySettings();
+            if (refreshCompanies) {
+                await refreshCompanies();
+            }
+            if (formData.country) {
+                changeLanguageByCountry(formData.country);
+            }
+            toast.success('Settings saved successfully!');
+        } catch (error) {
+            console.error('Save Error:', error);
+            const errorMessage = error.response?.data?.error || error.response?.data?.message || error.message || 'Unknown error occurred';
+            toast.error('Failed to save settings: ' + errorMessage);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handlePasswordChangeRequest = async () => {
+        try {
+            const response = await passwordRequestService.create();
+            toast.success(response.message || 'Password change request submitted successfully!');
+        } catch (error) {
+            console.error(error);
+            toast.error('Failed to submit request: ' + (error.response?.data?.message || error.message));
+        }
+    };
+
+    const getContrastColor = (hexcolor) => {
+        if (!hexcolor || hexcolor === 'transparent') return '#ffffff';
+        const hex = hexcolor.replace('#', '');
+        const r = parseInt(hex.substr(0, 2), 16);
+        const g = parseInt(hex.substr(2, 2), 16);
+        const b = parseInt(hex.substr(4, 2), 16);
+        const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
+        return (yiq >= 150) ? '#1e293b' : '#ffffff';
+    };
+
+    const previewStyle = {
+        '--header-bg': invoiceSettings.color,
+        '--header-text': getContrastColor(invoiceSettings.color)
+    };
+
+    // Synchronization logic to update both customer receipt and vendor payment states simultaneously
+    const handleLabelChange = (key, value) => {
+        setReceiptLabels(prev => {
+            const next = { ...prev, [key]: value };
+            if (key === 'receivedInto') next.paidFrom = value;
+            if (key === 'receivedFrom') next.receivedFrom = value;
+            return next;
+        });
+        setPaymentLabels(prev => {
+            const next = { ...prev, [key]: value };
+            if (key === 'receivedInto') next.paidFrom = value;
+            if (key === 'receivedFrom') next.receivedFrom = value;
+            return next;
+        });
+    };
+
+    const handleHeaderChange = (key, value) => {
+        setReceiptTableHeaders(prev => {
+            const next = { ...prev };
+            if (key === 'number') next.invoiceNumber = value;
+            if (key === 'date') next.invoiceDate = value;
+            if (key === 'amount') next.invoiceAmount = value;
+            if (key === 'allocatedAmount') next.allocatedAmount = value;
+            if (key === 'balanceDue') next.balanceDue = value;
+            return next;
+        });
+        setPaymentTableHeaders(prev => {
+            const next = { ...prev };
+            if (key === 'number') next.billNumber = value;
+            if (key === 'date') next.billDate = value;
+            if (key === 'amount') next.billAmount = value;
+            if (key === 'allocatedAmount') next.allocatedAmount = value;
+            if (key === 'balanceDue') next.balanceDue = value;
+            return next;
+        });
+    };
+
+    const getTransactionTypeDisplayName = (type) => {
+        const names = {
+            invoice: 'Invoice',
+            receipt: 'Customer Receipt',
+            payment: 'Vendor Payment',
+            purchaseorder: 'Purchase Order',
+            purchasebill: 'Purchase Bill',
+            purchasequotation: 'Purchase Quotation',
+            salesorder: 'Sales Order',
+            salesquotation: 'Sales Quotation',
+            salesreturn: 'Credit Note (Sales Return)',
+            purchasereturn: 'Debit Note (Purchase Return)',
+            deliverychallan: 'Delivery Challan',
+            goodsreceiptnote: 'Goods Receipt Note',
+            voucher: 'Voucher (Exp/Inc/Contra/Journal)',
+            posinvoice: 'POS Invoice',
+            stocktransfer: 'Stock Transfer',
+            adjustment: 'Stock Adjustment'
+        };
+        return names[type] || type;
+    };
+
+    const handleNumberingFieldChange = (index, field, value) => {
+        setNumberingSettings(prev => {
+            const updated = [...prev];
+            const targetSetting = { ...updated[index] };
+
+            if (field === 'pattern') {
+                if (value === 'custom') {
+                    const currentPrefix = targetSetting.prefix || '';
+                    if (!currentPrefix.includes('{YYYY}') && !currentPrefix.includes('{YY}') && !currentPrefix.includes('{MM}') && !currentPrefix.includes('{DD}')) {
+                        let newPrefix = currentPrefix;
+                        if (newPrefix.endsWith('-')) {
+                            newPrefix = newPrefix.slice(0, -1);
+                        }
+                        targetSetting.prefix = `${newPrefix}-{YYYY}{MM}{DD}-`;
+                    }
+                } else {
+                    const currentPrefix = targetSetting.prefix || '';
+                    let newPrefix = currentPrefix
+                        .replace(/{YYYY}/g, '')
+                        .replace(/{YY}/g, '')
+                        .replace(/{MM}/g, '')
+                        .replace(/{DD}/g, '')
+                        .replace(/--+/g, '-')
+                        .replace(/^-|-$/g, '');
+
+                    if (newPrefix && !newPrefix.endsWith('-')) {
+                        newPrefix = `${newPrefix}-`;
+                    }
+                    targetSetting.prefix = newPrefix;
+                }
+            }
+
+            targetSetting[field] = value;
+            updated[index] = targetSetting;
+            return updated;
+        });
+    };
+
+
+    const previewNextNumber = (setting) => {
+        const { prefix = '', currentNumber = 1, paddingLength = 4, pattern = 'numeric' } = setting;
+        let finalPrefix = prefix || '';
+
+        if (pattern === 'custom') {
+            const date = new Date();
+            const yyyy = date.getFullYear().toString();
+            const yy = yyyy.slice(-2);
+            const mm = String(date.getMonth() + 1).padStart(2, '0');
+            const dd = String(date.getDate()).padStart(2, '0');
+            finalPrefix = finalPrefix
+                .replace(/{YYYY}/g, yyyy)
+                .replace(/{YY}/g, yy)
+                .replace(/{MM}/g, mm)
+                .replace(/{DD}/g, dd);
+        }
+
+        let sequenceStr = '';
+        if (pattern === 'alphanumeric') {
+            const b36 = currentNumber.toString(36).toUpperCase();
+            sequenceStr = b36.padStart(paddingLength, '0');
+        } else {
+            sequenceStr = String(currentNumber).padStart(paddingLength, '0');
+        }
+
+        return `${finalPrefix}${sequenceStr}`;
+    };
+
+    const handleSaveDeletionPassword = async (e) => {
+        if (e) e.preventDefault();
+        const trimmed = deletionPasswordInput.trim();
+        if (!trimmed) {
+            toast.error('Please enter a deletion password');
+            return;
+        }
+        if (trimmed.length < 4) {
+            toast.error('Password must be at least 4 characters long');
+            return;
+        }
+        if (trimmed !== confirmDeletionPasswordInput.trim()) {
+            toast.error('Passwords do not match');
+            return;
+        }
+
+        setIsSavingDeletionPassword(true);
+        try {
+            const activeCompId = companyId || GetCompanyId();
+            const res = await companyService.updateInvoiceDeletionPassword(activeCompId, trimmed);
+            if (res?.data?.success || res?.success) {
+                setHasDeletionPassword(true);
+                setDeletionPasswordInput('');
+                setConfirmDeletionPasswordInput('');
+                setShowChangeDeletionPassword(false);
+                toast.success('Invoice deletion password saved! Invoice deletions are now protected.');
+            } else {
+                toast.error(res?.data?.message || res?.message || 'Failed to save deletion password');
+            }
+        } catch (err) {
+            console.error('Error saving deletion password:', err);
+            toast.error(err.response?.data?.message || 'Error saving invoice deletion password');
+        } finally {
+            setIsSavingDeletionPassword(false);
+        }
+    };
+
+    const handleRemoveDeletionPassword = async () => {
+        if (!window.confirm('Are you sure you want to remove the invoice deletion password?')) {
+            return;
+        }
+        setIsSavingDeletionPassword(true);
+        try {
+            const activeCompId = companyId || GetCompanyId();
+            const res = await companyService.updateInvoiceDeletionPassword(activeCompId, null);
+            if (res?.data?.success || res?.success) {
+                setHasDeletionPassword(false);
+                setDeletionPasswordInput('');
+                setConfirmDeletionPasswordInput('');
+                setShowChangeDeletionPassword(false);
+                toast.success('Invoice deletion password removed.');
+            }
+        } catch (err) {
+            console.error('Error removing deletion password:', err);
+            toast.error(err.response?.data?.message || 'Error removing deletion password');
+        } finally {
+            setIsSavingDeletionPassword(false);
+        }
+    };
+
+    return (
+        <div className="companySetting-settings-page">
+            <div className="companySetting-page-header">
+                <div>
+                    <h1 className="companySetting-page-title">Company Settings</h1>
+                    <p className="companySetting-page-subtitle">Manage your company profile and preferences</p>
+                </div>
+                {hasPermission('edit settings') && (
+                    <button className="companySetting-btn-primary" onClick={handleSave} disabled={loading}>
+                        <Save size={18} /> {loading ? 'Saving...' : 'Save Changes'}
+                    </button>
+                )}
+            </div>
+
+            <div className="companySetting-settings-container">
+                {/* Tabs */}
+                <div className="companySetting-settings-tabs">
+                    <button
+                        className={`companySetting-tab-btn ${activeTab === 'general' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('general')}
+                    >
+                        General Info
+                    </button>
+                    <button
+                        className={`companySetting-tab-btn ${activeTab === 'salesSection' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('salesSection')}
+                    >
+                        Sale Section
+                    </button>
+                    <button
+                        className={`companySetting-tab-btn ${activeTab === 'purchaseSection' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('purchaseSection')}
+                    >
+                        Purches Section
+                    </button>
+                    <button
+                        className={`companySetting-tab-btn ${activeTab === 'otherSection' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('otherSection')}
+                    >
+                        Voucher Section
+                    </button>
+                    <button
+                        className={`companySetting-tab-btn ${activeTab === 'invoice' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('invoice')}
+                    >
+                        Invoice Setting
+                    </button>
+                    <button
+                        className={`companySetting-tab-btn ${activeTab === 'payment' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('payment')}
+                    >
+                        Receipt/Payment Labels
+                    </button>
+                    <button
+                        className={`companySetting-tab-btn ${activeTab === 'inventory' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('inventory')}
+                    >
+                        Inventory
+                    </button>
+                    <button
+                        className={`companySetting-tab-btn ${activeTab === 'security' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('security')}
+                    >
+                        Security
+                    </button>
+                    <button
+                        className={`companySetting-tab-btn ${activeTab === 'customFields' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('customFields')}
+                    >
+                        Custom Fields
+                    </button>
+                    <button
+                        className={`companySetting-tab-btn ${activeTab === 'smtp' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('smtp')}
+                    >
+                        Email / SMTP
+                    </button>
+                </div>
+
+                {/* Content */}
+                <div className="companySetting-settings-content">
+                    {activeTab === 'general' && (
+                        <div className="companySetting-form-section companySetting-fade-in general-info-wrapper">
+                            {/* Card 1: General Details & Logo */}
+                            <div className="general-card">
+                                <div className="general-card-header">
+                                    <div className="general-card-icon-badge">
+                                        <Building2 size={18} />
+                                    </div>
+                                    <div>
+                                        <h3 className="general-card-title">General Information</h3>
+                                        <p className="general-card-subtitle">Manage company name, contact details, and branding logo</p>
+                                    </div>
+                                </div>
+                                <div className="companySetting-form-grid">
+                                    <div className="companySetting-form-group">
+                                        <label>Company Name <span className="companySetting-required">*</span></label>
+                                        <div className="companySetting-icon-wrapper">
+                                            <Building2 size={18} className="companySetting-icon" />
+                                            <input
+                                                type="text"
+                                                value={formData.name}
+                                                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                                placeholder="Enter company name"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="companySetting-form-group">
+                                        <label>Company Email <span className="companySetting-required">*</span></label>
+                                        <div className="companySetting-icon-wrapper">
+                                            <Mail size={18} className="companySetting-icon" />
+                                            <input
+                                                type="email"
+                                                value={formData.email}
+                                                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                                                placeholder="Enter company email"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="companySetting-form-group">
+                                        <label>Phone Number</label>
+                                        <div className="companySetting-icon-wrapper">
+                                            <Phone size={18} className="companySetting-icon" />
+                                            <input
+                                                type="tel"
+                                                value={formData.phone}
+                                                onChange={(e) => setFormData({ ...formData, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                                                maxLength={10}
+                                                placeholder="Enter phone number"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="companySetting-form-group">
+                                        <label>Website</label>
+                                        <div className="companySetting-icon-wrapper">
+                                            <Globe size={18} className="companySetting-icon" />
+                                            <input
+                                                type="url"
+                                                value={formData.website}
+                                                onChange={(e) => setFormData({ ...formData, website: e.target.value })}
+                                                placeholder="https://www.example.com"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="companySetting-logo-section">
+                                    <label>Company Branding Logo</label>
+                                    <div className="companySetting-logo-uploader">
+                                        <div className="companySetting-preview-box">
+                                            {logoPreview ? (
+                                                <img src={logoPreview} alt="Company Logo" className="companySetting-logo-preview-img" />
+                                            ) : (
+                                                <ImageIcon size={32} />
+                                            )}
+                                        </div>
+                                        <div className="companySetting-upload-controls">
+                                            <input
+                                                type="file"
+                                                ref={fileInputRef}
+                                                onChange={(e) => handleLogoChange(e, 'company')}
+                                                accept="image/jpeg, image/png, image/gif"
+                                                style={{ display: 'none' }}
+                                            />
+                                            <button className="companySetting-btn-upload" onClick={() => handleUploadClick(fileInputRef)}>
+                                                <Upload size={16} /> Upload New Logo
+                                            </button>
+                                            <p className="companySetting-upload-hint">Allowed JPG, GIF or PNG. Max size of 800KB</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Card 2: Company Address */}
+                            <div className="general-card">
+                                <div className="general-card-header">
+                                    <div className="general-card-icon-badge">
+                                        <MapPin size={18} />
+                                    </div>
+                                    <div>
+                                        <h3 className="general-card-title">Company Address</h3>
+                                        <p className="general-card-subtitle">Official registered and billing location</p>
+                                    </div>
+                                </div>
+                                <div className="companySetting-form-grid">
+                                    <div className="companySetting-form-group full-width">
+                                        <label>Street Address</label>
+                                        <div className="companySetting-icon-wrapper">
+                                            <MapPin size={18} className="companySetting-icon" />
+                                            <textarea rows="2" value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })} placeholder="123 Business St, Tech Park"></textarea>
+                                        </div>
+                                    </div>
+                                    <div className="companySetting-form-group">
+                                        <label>City</label>
+                                        <input type="text" value={formData.city} onChange={(e) => setFormData({ ...formData, city: e.target.value })} placeholder="Enter city" />
+                                    </div>
+                                    <div className="companySetting-form-group">
+                                        <label>State / Province</label>
+                                        <input type="text" value={formData.state} onChange={(e) => setFormData({ ...formData, state: e.target.value })} placeholder="Enter state" />
+                                    </div>
+                                    <div className="companySetting-form-group">
+                                        <label>Postal Code</label>
+                                        <input type="text" value={formData.zip} onChange={(e) => setFormData({ ...formData, zip: e.target.value })} placeholder="Enter zip code" />
+                                    </div>
+                                    <div className="companySetting-form-group">
+                                        <label>Country</label>
+                                        <CountrySelect
+                                            value={formData.country}
+                                            onChange={(selectedCountry) => {
+                                                setFormData(prev => ({ ...prev, country: selectedCountry }));
+                                            }}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Card 3: Business & Tax Settings */}
+                            <div className="general-card">
+                                <div className="general-card-header">
+                                    <div className="general-card-icon-badge">
+                                        <Landmark size={18} />
+                                    </div>
+                                    <div>
+                                        <h3 className="general-card-title">Business &amp; VAT Settings</h3>
+                                        <p className="general-card-subtitle">Set primary accounting currency, default company VAT rate, and tax registration details</p>
+                                    </div>
+                                </div>
+                                <div className="companySetting-form-grid">
+                                    <div className="companySetting-form-group">
+                                        <label>Base Currency</label>
+                                        <select value={formData.currency} onChange={(e) => setFormData({ ...formData, currency: e.target.value })}>
+                                            {currencies.map(curr => (
+                                                <option key={curr.code} value={curr.code}>{curr.name} ({curr.code})</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div className="companySetting-form-group">
+                                        <label>Default Company VAT Rate</label>
+                                        <select 
+                                            value={formData.defaultVatRate || '23'} 
+                                            onChange={(e) => setFormData({ ...formData, defaultVatRate: e.target.value })}
+                                            style={{ fontWeight: 600 }}
+                                        >
+                                            <option value="23">23% (Standard Rate)</option>
+                                            <option value="13.5">13.5% (Reduced Rate)</option>
+                                            <option value="0">No VAT (0%)</option>
+                                        </select>
+                                        <span style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px', display: 'block' }}>
+                                            Automatically selected by default on all new line items in Invoices, Bills, Orders &amp; Quotes.
+                                        </span>
+                                    </div>
+                                    <div className="companySetting-form-group">
+                                        <label>VAT Registration Number</label>
+                                        <input
+                                            type="text"
+                                            value={formData.vatNumber}
+                                            onChange={(e) => setFormData({ ...formData, vatNumber: e.target.value })}
+                                            placeholder="e.g. IE1234567T / GB123456789"
+                                        />
+                                    </div>
+                                    <div className="companySetting-form-group" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', margin: 0 }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={formData.isVatRegistered}
+                                                onChange={(e) => setFormData({ ...formData, isVatRegistered: e.target.checked })}
+                                                style={{ width: '16px', height: '16px', accentColor: '#1e293b', cursor: 'pointer' }}
+                                            />
+                                            <span style={{ fontSize: '0.875rem', fontWeight: 600, color: '#334155' }}>
+                                                Registered for VAT
+                                            </span>
+                                        </label>
+                                        <span style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}>
+                                            Applies VAT calculations and enables 2-month VAT revenue returns.
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Card 4: Bank Details */}
+                            <div className="general-card">
+                                <div className="general-card-header">
+                                    <div className="general-card-icon-badge">
+                                        <Landmark size={18} />
+                                    </div>
+                                    <div>
+                                        <h3 className="general-card-title">Bank &amp; Settlement Details</h3>
+                                        <p className="general-card-subtitle">Official bank account information displayed on customer invoices &amp; PDF templates</p>
+                                    </div>
+                                </div>
+                                <div className="companySetting-form-grid">
+                                    <div className="companySetting-form-group">
+                                        <label>Bank Name</label>
+                                        <div className="companySetting-icon-wrapper">
+                                            <Landmark size={18} className="companySetting-icon" />
+                                            <input type="text" value={formData.bankName} onChange={(e) => setFormData({ ...formData, bankName: e.target.value })} placeholder="e.g. Allied Irish Banks / Barclays" />
+                                        </div>
+                                    </div>
+                                    <div className="companySetting-form-group">
+                                        <label>Account Name / Holder</label>
+                                        <input type="text" value={formData.accountHolder || formData.accountName} onChange={(e) => setFormData({ ...formData, accountHolder: e.target.value, accountName: e.target.value })} placeholder="Enter account holder name" />
+                                    </div>
+                                    <div className="companySetting-form-group">
+                                        <label>Account Number</label>
+                                        <input type="text" value={formData.accountNumber} onChange={(e) => setFormData({ ...formData, accountNumber: e.target.value })} placeholder="e.g. 12345678" />
+                                    </div>
+                                    <div className="companySetting-form-group">
+                                        <label>IBAN</label>
+                                        <input type="text" value={formData.iban} onChange={(e) => setFormData({ ...formData, iban: e.target.value })} placeholder="e.g. IE29 AIBK 9311 5212 3456 78" />
+                                    </div>
+                                    <div className="companySetting-form-group">
+                                        <label>BIC / SWIFT Code</label>
+                                        <input type="text" value={formData.bic} onChange={(e) => setFormData({ ...formData, bic: e.target.value })} placeholder="e.g. AIBKIE2D" />
+                                    </div>
+                                    <div className="companySetting-form-group">
+                                        <label>Sort Code / IFSC</label>
+                                        <input type="text" value={formData.sortCode || formData.ifsc} onChange={(e) => setFormData({ ...formData, sortCode: e.target.value, ifsc: e.target.value })} placeholder="e.g. 93-11-52" />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'invoice' && (
+                        <div className="companySetting-form-section companySetting-fade-in">
+                            <div className="invoice-settings-layout">
+                                {/* Left Controls */}
+                                <div className="invoice-controls">
+                                    {/* Invoice Deletion Protection (Security Settings) */}
+                                    <div className="deletion-protection-card">
+                                        <div className="deletion-protection-header">
+                                            <div className="deletion-protection-title-wrap">
+                                                <div className="deletion-protection-icon-badge">
+                                                    <Lock size={18} />
+                                                </div>
+                                                <div>
+                                                    <h4 className="deletion-protection-title">Invoice Deletion Protection</h4>
+                                                    <p className="deletion-protection-subtitle">
+                                                        Require authorization password before any invoice can be permanently deleted.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <div className={`deletion-status-pill ${hasDeletionPassword ? 'active' : 'inactive'}`}>
+                                                {hasDeletionPassword ? (
+                                                    <>
+                                                        <ShieldCheck size={14} />
+                                                        <span>Protected</span>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <ShieldAlert size={14} />
+                                                        <span>Not Set</span>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {!hasDeletionPassword && !showChangeDeletionPassword && (
+                                            <div className="deletion-protection-alert">
+                                                <ShieldAlert size={16} style={{ flexShrink: 0, marginTop: '2px' }} />
+                                                <div>
+                                                    <strong>Deletion Protection Not Configured:</strong> Set an invoice deletion password below so that invoices cannot be deleted without password confirmation.
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {hasDeletionPassword && !showChangeDeletionPassword ? (
+                                            <div className="deletion-protection-actions-bar">
+                                                <div className="deletion-protection-configured-note">
+                                                    <Check size={16} style={{ color: '#16a34a', flexShrink: 0 }} />
+                                                    <span>Password protection is active. Users must confirm this password before deleting invoices.</span>
+                                                </div>
+                                                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                                    <button
+                                                        type="button"
+                                                        className="btn-change-deletion-password"
+                                                        onClick={() => setShowChangeDeletionPassword(true)}
+                                                    >
+                                                        Change Password
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="btn-remove-deletion-password"
+                                                        onClick={handleRemoveDeletionPassword}
+                                                        disabled={isSavingDeletionPassword}
+                                                    >
+                                                        Remove
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="deletion-password-form">
+                                                <div className="deletion-form-grid">
+                                                    <div className="companySetting-form-group" style={{ marginBottom: 0 }}>
+                                                        <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#334155' }}>
+                                                            {hasDeletionPassword ? 'New Deletion Password' : 'Create Deletion Password'}
+                                                        </label>
+                                                        <div className="deletion-input-wrap">
+                                                            <input
+                                                                type={showDeletionPassword ? 'text' : 'password'}
+                                                                value={deletionPasswordInput}
+                                                                onChange={(e) => setDeletionPasswordInput(e.target.value)}
+                                                                placeholder="Min 4 characters"
+                                                                className="deletion-pwd-input"
+                                                            />
+                                                            <button
+                                                                type="button"
+                                                                className="deletion-pwd-eye-btn"
+                                                                onClick={() => setShowDeletionPassword(!showDeletionPassword)}
+                                                                tabIndex={-1}
+                                                                title={showDeletionPassword ? 'Hide password' : 'Show password'}
+                                                            >
+                                                                {showDeletionPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                                                            </button>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="companySetting-form-group" style={{ marginBottom: 0 }}>
+                                                        <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#334155' }}>
+                                                            Confirm Password
+                                                        </label>
+                                                        <div className="deletion-input-wrap">
+                                                            <input
+                                                                type={showDeletionPassword ? 'text' : 'password'}
+                                                                value={confirmDeletionPasswordInput}
+                                                                onChange={(e) => setConfirmDeletionPasswordInput(e.target.value)}
+                                                                placeholder="Confirm deletion password"
+                                                                className="deletion-pwd-input"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '12px' }}>
+                                                    {hasDeletionPassword && (
+                                                        <button
+                                                            type="button"
+                                                            className="btn-cancel-deletion-password"
+                                                            onClick={() => {
+                                                                setShowChangeDeletionPassword(false);
+                                                                setDeletionPasswordInput('');
+                                                                setConfirmDeletionPasswordInput('');
+                                                            }}
+                                                        >
+                                                            Cancel
+                                                        </button>
+                                                    )}
+                                                    <button
+                                                        type="button"
+                                                        className="btn-save-deletion-password"
+                                                        onClick={handleSaveDeletionPassword}
+                                                        disabled={isSavingDeletionPassword}
+                                                    >
+                                                        {isSavingDeletionPassword ? (
+                                                            <>
+                                                                <Loader2 size={14} className="animate-spin" />
+                                                                <span>Saving...</span>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <Key size={14} />
+                                                                <span>{hasDeletionPassword ? 'Update Password' : 'Save Deletion Password'}</span>
+                                                            </>
+                                                        )}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div style={{ height: '1px', background: '#e2e8f0', margin: '1.5rem 0' }} />
+
+                                    <h3 style={{ marginTop: 0, marginBottom: '1.5rem' }}>Invoice Print Settings</h3>
+
+                                    <div className="companySetting-form-group" style={{ marginBottom: '1.5rem' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                                            <label style={{ margin: 0, fontWeight: '600' }}>Invoice Template</label>
+                                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                {invoiceSettings.template !== 'Light Gray' && invoiceSettings.template !== 'Light Grey' && invoiceSettings.template !== 'Standard VAT (CEA)' && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleDeleteTemplate(invoiceSettings.template)}
+                                                        title="Delete this template"
+                                                        style={{
+                                                            display: 'inline-flex',
+                                                            alignItems: 'center',
+                                                            gap: '4px',
+                                                            fontSize: '0.78rem',
+                                                            fontWeight: '600',
+                                                            color: '#ef4444',
+                                                            background: '#fee2e2',
+                                                            border: '1px solid #fca5a5',
+                                                            borderRadius: '6px',
+                                                            padding: '4px 8px',
+                                                            cursor: 'pointer'
+                                                        }}
+                                                    >
+                                                        <Trash2 size={13} /> Delete
+                                                    </button>
+                                                )}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowAddTemplateModal(true)}
+                                                    style={{
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px',
+                                                        fontSize: '0.78rem',
+                                                        fontWeight: '600',
+                                                        color: '#2563eb',
+                                                        background: '#eff6ff',
+                                                        border: '1px solid #bfdbfe',
+                                                        borderRadius: '6px',
+                                                        padding: '4px 10px',
+                                                        cursor: 'pointer',
+                                                        transition: 'all 0.2s ease'
+                                                    }}
+                                                >
+                                                    <Plus size={13} /> Add Template
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <select
+                                            value={invoiceSettings.template}
+                                            onChange={(e) => {
+                                                if (e.target.value === '__add_new__') {
+                                                    setShowAddTemplateModal(true);
+                                                } else {
+                                                    handleTemplateChange(e.target.value);
+                                                }
+                                            }}
+                                            style={{ padding: '0.8rem', borderColor: '#1e293b', width: '100%', borderRadius: '6px' }}
+                                        >
+                                            {availableTemplates.map(t => <option key={t} value={t}>{t}</option>)}
+                                            <option value="__add_new__">+ Add New Template...</option>
+                                        </select>
+                                    </div>
+
+                                    <div className="companySetting-form-group" style={{ marginBottom: '1.5rem' }}>
+                                        <label>QR Display?</label>
+                                        <label className="switch-label">
+                                            <input
+                                                type="checkbox"
+                                                className="switch-input"
+                                                checked={invoiceSettings.showQr}
+                                                onChange={(e) => setInvoiceSettings({ ...invoiceSettings, showQr: e.target.checked })}
+                                            />
+                                            <div className="switch-toggle" />
+                                        </label>
+                                    </div>
+
+                                    <div className="companySetting-form-group" style={{ marginBottom: '1.5rem' }}>
+                                        <label>Color Input</label>
+                                        <div className="color-swatches">
+                                            {colors.map(c => (
+                                                <div
+                                                    key={c}
+                                                    className={`color-swatch ${invoiceSettings.color === c ? 'active' : ''}`}
+                                                    style={{
+                                                        backgroundColor: c,
+                                                        border: c.toLowerCase() === '#dedede' ? '1px solid #94a3b8' : undefined
+                                                    }}
+                                                    onClick={() => setInvoiceSettings({ ...invoiceSettings, color: c })}
+                                                    title={c.toLowerCase() === '#dedede' ? 'Light Gray (#dedede)' : c}
+                                                >
+                                                    {invoiceSettings.color === c && (
+                                                        <Check
+                                                            size={14}
+                                                            className="color-swatch-check"
+                                                            style={{ color: c.toLowerCase() === '#dedede' ? '#1e293b' : undefined }}
+                                                        />
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div className="companySetting-logo-section" style={{ border: 'none', padding: 0 }}>
+                                        <label>Invoice Logo</label>
+                                        <p style={{ fontSize: '0.8rem', color: '#666', marginBottom: '0.5rem' }}>Overhead content if different from company logo</p>
+
+                                        <input
+                                            type="file"
+                                            ref={invoiceLogoInputRef}
+                                            onChange={(e) => handleLogoChange(e, 'invoice')}
+                                            accept="image/jpeg, image/png"
+                                            style={{ display: 'none' }}
+                                        />
+                                        <button
+                                            className="companySetting-btn-upload"
+                                            style={{ backgroundColor: '#1e293b', color: 'white', border: 'none', width: '100%', justifyContent: 'center' }}
+                                            onClick={() => handleUploadClick(invoiceLogoInputRef)}
+                                        >
+                                            <Upload size={16} /> Choose file here
+                                        </button>
+                                    </div>
+
+                                    <div className="companySetting-logo-section" style={{ border: 'none', padding: 0, marginTop: '1.5rem', borderTop: '1px solid #eee', paddingTop: '1.5rem' }}>
+                                        <h4 style={{ margin: '0 0 1rem 0', color: '#1e293b', fontSize: '1rem' }}>Document Terms &amp; Labels</h4>
+                                        <p style={{ fontSize: '0.78rem', color: '#94a3b8', margin: '0 0 1rem 0' }}>Customize text labels that appear on invoices &amp; bills.</p>
+                                        <div className="companySetting-form-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.8rem' }}>
+                                            {[
+                                                { key: 'billTo', label: 'Bill To Label' },
+                                                { key: 'shipTo', label: 'Ship To Label' },
+                                                { key: 'subTotal', label: 'Sub Total Label' },
+                                                { key: 'tax', label: 'Tax Label' },
+                                                { key: 'total', label: 'Total Label' },
+                                                { key: 'number', label: 'Number Label' },
+                                                { key: 'issue', label: 'Issue Date Label' },
+                                                { key: 'dueDate', label: 'Due Date Label' }
+                                            ].map(({ key, label }) => (
+                                                <div key={key} className="companySetting-form-group" style={{ marginBottom: 0 }}>
+                                                    <label style={{ fontSize: '0.8rem', color: '#475569' }}>{label}</label>
+                                                    <input
+                                                        type="text"
+                                                        value={invoiceLabels[key]}
+                                                        onChange={(e) => setInvoiceLabels({ ...invoiceLabels, [key]: e.target.value })}
+                                                        style={{ padding: '0.5rem', fontSize: '0.9rem', width: '100%' }}
+                                                    />
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div className="companySetting-logo-section" style={{ border: 'none', padding: 0, marginTop: '1.5rem', borderTop: '1px solid #eee', paddingTop: '1.5rem' }}>
+                                        <h4 style={{ margin: '0 0 1rem 0', color: '#1e293b', fontSize: '1rem' }}>Invoice Table Headers</h4>
+                                        <div className="companySetting-form-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.8rem' }}>
+                                            <div className="companySetting-form-group" style={{ marginBottom: 0 }}>
+                                                <label style={{ fontSize: '0.8rem', color: '#475569' }}>Item Col</label>
+                                                <input
+                                                    type="text"
+                                                    value={tableHeaders.item}
+                                                    onChange={(e) => setTableHeaders({ ...tableHeaders, item: e.target.value })}
+                                                    style={{ padding: '0.5rem', fontSize: '0.9rem', width: '100%' }}
+                                                />
+                                            </div>
+                                            <div className="companySetting-form-group" style={{ marginBottom: 0 }}>
+                                                <label style={{ fontSize: '0.8rem', color: '#475569' }}>Quantity Col</label>
+                                                <input
+                                                    type="text"
+                                                    value={tableHeaders.quantity}
+                                                    onChange={(e) => setTableHeaders({ ...tableHeaders, quantity: e.target.value })}
+                                                    style={{ padding: '0.5rem', fontSize: '0.9rem', width: '100%' }}
+                                                />
+                                            </div>
+                                            <div className="companySetting-form-group" style={{ marginBottom: 0 }}>
+                                                <label style={{ fontSize: '0.8rem', color: '#475569' }}>Rate Col</label>
+                                                <input
+                                                    type="text"
+                                                    value={tableHeaders.rate}
+                                                    onChange={(e) => setTableHeaders({ ...tableHeaders, rate: e.target.value })}
+                                                    style={{ padding: '0.5rem', fontSize: '0.9rem', width: '100%' }}
+                                                />
+                                            </div>
+                                            <div className="companySetting-form-group" style={{ marginBottom: 0 }}>
+                                                <label style={{ fontSize: '0.8rem', color: '#475569' }}>Discount Col</label>
+                                                <input
+                                                    type="text"
+                                                    value={tableHeaders.discount}
+                                                    onChange={(e) => setTableHeaders({ ...tableHeaders, discount: e.target.value })}
+                                                    style={{ padding: '0.5rem', fontSize: '0.9rem', width: '100%' }}
+                                                />
+                                            </div>
+                                            <div className="companySetting-form-group" style={{ marginBottom: 0 }}>
+                                                <label style={{ fontSize: '0.8rem', color: '#475569' }}>Tax Col</label>
+                                                <input
+                                                    type="text"
+                                                    value={tableHeaders.tax}
+                                                    onChange={(e) => setTableHeaders({ ...tableHeaders, tax: e.target.value })}
+                                                    style={{ padding: '0.5rem', fontSize: '0.9rem', width: '100%' }}
+                                                />
+                                            </div>
+                                            <div className="companySetting-form-group" style={{ marginBottom: 0 }}>
+                                                <label style={{ fontSize: '0.8rem', color: '#475569' }}>Price Col</label>
+                                                <input
+                                                    type="text"
+                                                    value={tableHeaders.price}
+                                                    onChange={(e) => setTableHeaders({ ...tableHeaders, price: e.target.value })}
+                                                    style={{ padding: '0.5rem', fontSize: '0.9rem', width: '100%' }}
+                                                />
+                                            </div>
+                                            <div className="companySetting-form-group" style={{ marginBottom: 0 }}>
+                                                <label style={{ fontSize: '0.8rem', color: '#475569' }}>Warehouse Col</label>
+                                                <input
+                                                    type="text"
+                                                    value={tableHeaders.warehouse || ''}
+                                                    onChange={(e) => setTableHeaders({ ...tableHeaders, warehouse: e.target.value })}
+                                                    style={{ padding: '0.5rem', fontSize: '0.9rem', width: '100%' }}
+                                                />
+                                            </div>
+                                            <div className="companySetting-form-group" style={{ marginBottom: 0 }}>
+                                                <label style={{ fontSize: '0.8rem', color: '#475569' }}>UOM Col</label>
+                                                <input
+                                                    type="text"
+                                                    value={tableHeaders.uom || ''}
+                                                    onChange={(e) => setTableHeaders({ ...tableHeaders, uom: e.target.value })}
+                                                    style={{ padding: '0.5rem', fontSize: '0.9rem', width: '100%' }}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="companySetting-logo-section" style={{ border: 'none', padding: 0, marginTop: '1.5rem', borderTop: '1px solid #eee', paddingTop: '1.5rem' }}>
+                                        <h4 style={{ margin: '0 0 1rem 0', color: '#1e293b', fontSize: '1rem' }}>Show / Hide Sections &amp; Fields</h4>
+                                        <div className="companySetting-form-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.8rem' }}>
+                                            {[
+                                                { key: 'showHeader', label: 'Show Company Header' },
+                                                { key: 'showFooter', label: 'Show Notes/Terms Footer' },
+                                                { key: 'showWarehouse', label: 'Show Warehouse Col' },
+                                                { key: 'showQty', label: 'Show Quantity Col' },
+                                                { key: 'showUom', label: 'Show UOM Col' },
+                                                { key: 'showRate', label: 'Show Rate Col' },
+                                                { key: 'showTax', label: 'Show Tax Col' },
+                                                { key: 'showDiscount', label: 'Show Discount Col' }
+                                            ].map(({ key, label }) => (
+                                                <div key={key} className="companySetting-form-group" style={{ marginBottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                                    <label style={{ fontSize: '0.8rem', color: '#475569', margin: 0 }}>{label}</label>
+                                                    <label className="switch-label" style={{ margin: 0 }}>
+                                                        <input
+                                                            type="checkbox"
+                                                            className="switch-input"
+                                                            checked={invoiceLabels[key] !== false}
+                                                            onChange={(e) => setInvoiceLabels({ ...invoiceLabels, [key]: e.target.checked })}
+                                                        />
+                                                        <div className="switch-toggle" />
+                                                    </label>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {hasPermission('edit settings') && (
+                                        <div style={{ marginTop: '2rem' }}>
+                                            <button
+                                                className="companySetting-btn-primary"
+                                                onClick={handleSave}
+                                                style={{ backgroundColor: '#1e293b', width: '100%', justifyContent: 'center' }}
+                                            >
+                                                Save Changes
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Right Preview */}
+                                <div
+                                    className="invoice-preview-container invoice-cea-container"
+                                    style={{
+                                        ...previewStyle,
+                                        background: '#ffffff',
+                                        padding: '32px 36px 24px 36px',
+                                        border: '1px solid #e2e8f0',
+                                        borderRadius: '8px'
+                                    }}
+                                >
+                                    {/* 1. HEADER: Company Info (Left), Logo (Right) */}
+                                    {invoiceLabels.showHeader !== false && (
+                                        <div className="invoice-cea-header">
+                                            <div className="invoice-cea-company">
+                                                <div className="invoice-cea-company-name">{formData.name || 'CEAC Ltd'}</div>
+                                                <div className="invoice-cea-company-line">{formData.address || '17 South Mall'}</div>
+                                                <div className="invoice-cea-company-line">
+                                                    {formData.city && formData.zip
+                                                        ? `${formData.city}, ${formData.state ? (formData.state.includes('Co') ? formData.state : `Co, ${formData.state}`) : 'Co, Cork'} ${formData.zip}`
+                                                        : 'Cork, Co, Cork T12VCY2'}
+                                                </div>
+                                                <div className="invoice-cea-company-line">{formData.phone || '+353214272000'}</div>
+                                                <div className="invoice-cea-company-line">{formData.email || 'accounts@ceaarchitects.com'}</div>
+                                                <div className="invoice-cea-company-line">VAT ID: {formData.vatNumber || '4120278GH'}</div>
+                                            </div>
+                                            <div className="invoice-cea-logo-container">
+                                                <img
+                                                    src={invoiceSettings.logoPreview || resolveLogoUrl(formData.logo) || ceaArchitectsLogo}
+                                                    alt="Company Logo"
+                                                    className="invoice-cea-logo-img"
+                                                    onError={(e) => {
+                                                        e.target.onerror = null;
+                                                        e.target.src = ceaArchitectsLogo;
+                                                    }}
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* 2. TITLE & BILL TO (Left) and METADATA (Right) */}
+                                    {(() => {
+                                        const currentThemeColor = invoiceSettings.color || '#dedede';
+                                        const _isLight = isLightColor(currentThemeColor);
+                                        const headingColor = _isLight ? '#1e293b' : currentThemeColor;
+                                        const tableHeaderBg = _isLight ? '#dedede' : currentThemeColor;
+                                        const tableHeaderText = _isLight ? '#555555' : '#ffffff';
+
+                                        return (
+                                            <>
+                                                <div className="invoice-cea-middle">
+                                                    <div className="invoice-cea-middle-left">
+                                                        <div className="invoice-cea-doc-heading" style={{ color: headingColor }}>
+                                                            {invoiceLabels.number ? invoiceLabels.number.replace(/[:#]/g, '').trim().toUpperCase() : 'INVOICE'}
+                                                        </div>
+                                                        <div className="invoice-cea-bill-label">
+                                                            {invoiceLabels.billTo || 'BILL TO'}
+                                                        </div>
+                                                        <div className="invoice-cea-client-name">Frank Sheridan</div>
+                                                        <div className="invoice-cea-client-line">56 New cork road, Midleton, Co. Cork</div>
+                                                    </div>
+                                                    <div className="invoice-cea-middle-right">
+                                                        <div className="invoice-cea-meta-grid">
+                                                            <span className="invoice-cea-kv-key">{invoiceLabels.number || 'INVOICE'}</span>
+                                                            <span className="invoice-cea-kv-val">1550</span>
+
+                                                            <span className="invoice-cea-kv-key">{invoiceLabels.issue || 'DATE'}</span>
+                                                            <span className="invoice-cea-kv-val">06-05-2026</span>
+
+                                                            <span className="invoice-cea-kv-key">TERMS</span>
+                                                            <span className="invoice-cea-kv-val">Net 7</span>
+
+                                                            <span className="invoice-cea-kv-key">{invoiceLabels.dueDate || 'DUE DATE'}</span>
+                                                            <span className="invoice-cea-kv-val">13-05-2026</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* 3. ITEMS TABLE */}
+                                                <table className="invoice-cea-table">
+                                                    <thead>
+                                                        <tr style={{ backgroundColor: tableHeaderBg }}>
+                                                            <th style={{ textAlign: 'left', color: tableHeaderText }}>
+                                                                {tableHeaders.item || 'ACTIVITY'}
+                                                            </th>
+                                                            {invoiceLabels.showWarehouse !== false && (
+                                                                <th style={{ textAlign: 'left', color: tableHeaderText }}>
+                                                                    {tableHeaders.warehouse || 'DESCRIPTION'}
+                                                                </th>
+                                                            )}
+                                                            {invoiceLabels.showUom === true && (
+                                                                <th style={{ textAlign: 'center', color: tableHeaderText }}>
+                                                                    {tableHeaders.uom || 'UOM'}
+                                                                </th>
+                                                            )}
+                                                            {invoiceLabels.showQty !== false && (
+                                                                <th style={{ textAlign: 'right', color: tableHeaderText }}>
+                                                                    {tableHeaders.quantity || 'QUANTITY'}
+                                                                </th>
+                                                            )}
+                                                            {invoiceLabels.showRate !== false && (
+                                                                <th style={{ textAlign: 'right', color: tableHeaderText }}>
+                                                                    {tableHeaders.rate || 'RATE'}
+                                                                </th>
+                                                            )}
+                                                            {invoiceLabels.showDiscount !== false && (
+                                                                <th style={{ textAlign: 'right', color: tableHeaderText }}>
+                                                                    {tableHeaders.discount || 'DISCOUNT'}
+                                                                </th>
+                                                            )}
+                                                            {invoiceLabels.showTax !== false && (
+                                                                <th style={{ textAlign: 'right', color: tableHeaderText }}>
+                                                                    {tableHeaders.tax || 'TAX'}
+                                                                </th>
+                                                            )}
+                                                            <th style={{ textAlign: 'right', color: tableHeaderText }}>
+                                                                {tableHeaders.price || 'PRICE'}
+                                                            </th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        <tr>
+                                                            <td className="invoice-cea-activity-cell">Services</td>
+                                                            {invoiceLabels.showWarehouse !== false && <td className="invoice-cea-desc-cell">Services</td>}
+                                                            {invoiceLabels.showUom === true && <td>Units</td>}
+                                                            {invoiceLabels.showQty !== false && <td style={{ textAlign: 'right' }}>1</td>}
+                                                            {invoiceLabels.showRate !== false && <td style={{ textAlign: 'right' }}>2000.00</td>}
+                                                            {invoiceLabels.showDiscount !== false && <td style={{ textAlign: 'right' }}>0%</td>}
+                                                            {invoiceLabels.showTax !== false && <td style={{ textAlign: 'right' }}>23%</td>}
+                                                            <td style={{ textAlign: 'right' }}>2000.00</td>
+                                                        </tr>
+                                                    </tbody>
+                                                </table>
+
+                                                {/* 4. DOTTED DIVIDER 1 & TOTALS */}
+                                                <div className="invoice-cea-divider-dotted" style={{ borderColor: '#9ca3af', opacity: 0.5 }} />
+
+                                                <div className="invoice-cea-subtotal-section">
+                                                    <div className="invoice-cea-appreciation">
+                                                        We appreciate your business.
+                                                    </div>
+                                                    <div className="invoice-cea-totals-grid">
+                                                        <span className="invoice-cea-total-label">{invoiceLabels.subTotal || 'SUBTOTAL'}</span>
+                                                        <span className="invoice-cea-total-val">2000.00</span>
+
+                                                        {invoiceLabels.showDiscount !== false && (
+                                                            <>
+                                                                <span className="invoice-cea-total-label">{tableHeaders.discount || 'DISCOUNT'}</span>
+                                                                <span className="invoice-cea-total-val">0.00</span>
+                                                            </>
+                                                        )}
+
+                                                        <span className="invoice-cea-total-label">TAXABLE AMOUNT</span>
+                                                        <span className="invoice-cea-total-val">2000.00</span>
+
+                                                        {invoiceLabels.showTax !== false && (
+                                                            <>
+                                                                <span className="invoice-cea-total-label">{invoiceLabels.tax || 'TAX'}</span>
+                                                                <span className="invoice-cea-total-val">460.00</span>
+                                                            </>
+                                                        )}
+
+                                                        <span className="invoice-cea-total-label">{invoiceLabels.total || 'TOTAL'}</span>
+                                                        <span className="invoice-cea-total-val" style={{ fontWeight: '700', color: '#111827' }}>2460.00</span>
+                                                    </div>
+                                                </div>
+
+                                                {/* 5. DOTTED DIVIDER 2 & BALANCE DUE / PAID */}
+                                                <div className="invoice-cea-divider-dotted" style={{ borderColor: '#9ca3af', opacity: 0.5 }} />
+
+                                                <div className="invoice-cea-balance-section">
+                                                    <div className="invoice-cea-balance-box">
+                                                        <div className="invoice-cea-balance-line">
+                                                            <span className="invoice-cea-balance-label">BALANCE DUE</span>
+                                                            <span className="invoice-cea-balance-amount" style={{ color: '#111827', fontWeight: '800' }}>EUR 2460.00</span>
+                                                        </div>
+                                                        <div className="invoice-cea-paid-indicator" style={{ color: '#dc2626', fontWeight: '800', fontSize: '18px', letterSpacing: '0.05em' }}>
+                                                            UNPAID
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* 6. VAT SUMMARY */}
+                                                {invoiceLabels.showTax !== false && (
+                                                    <div className="invoice-cea-vat-section">
+                                                        <div className="invoice-cea-vat-title" style={{ color: headingColor, fontWeight: '700' }}>VAT SUMMARY</div>
+                                                        <table className="invoice-cea-vat-table">
+                                                            <thead>
+                                                                <tr style={{ backgroundColor: tableHeaderBg }}>
+                                                                    <th style={{ width: '40%', textAlign: 'left', color: tableHeaderText }}>RATE</th>
+                                                                    <th style={{ width: '30%', textAlign: 'right', color: tableHeaderText }}>VAT</th>
+                                                                    <th style={{ width: '30%', textAlign: 'right', color: tableHeaderText }}>NET</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                <tr>
+                                                                    <td style={{ textAlign: 'left' }}>VAT @ 23%</td>
+                                                                    <td style={{ textAlign: 'right' }}>460.00</td>
+                                                                    <td style={{ textAlign: 'right' }}>2000.00</td>
+                                                                </tr>
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                )}
+
+                                                {/* 7. BANK DETAILS BOX */}
+                                                {invoiceLabels.showFooter !== false && (
+                                                    <div className="invoice-cea-bank-box" style={{ borderLeft: `4px solid ${headingColor}`, background: getTintBg(currentThemeColor, 0.06) }}>
+                                                        <div className="invoice-cea-bank-grid">
+                                                            <div className="invoice-cea-bank-col">
+                                                                <div className="invoice-cea-bank-line">Name: {formData.accountName || formData.accountHolder || formData.name || 'CEAC LTD'}</div>
+                                                                <div className="invoice-cea-bank-line">IBAN: {formData.iban || 'IE03BOFI90290116673832'}</div>
+                                                                <div className="invoice-cea-bank-line">BIC: {formData.bic || 'BOFIIE2D'}</div>
+                                                                <div className="invoice-cea-bank-line">Account: {formData.accountNumber || '16673832'}</div>
+                                                            </div>
+                                                            <div className="invoice-cea-bank-col">
+                                                                <div className="invoice-cea-bank-line">NSC (SORT CODE): {formData.sortCode || '902901'}</div>
+                                                                <div className="invoice-cea-bank-line">{formData.bankName || 'Bank Of Ireland'}</div>
+                                                                <div className="invoice-cea-bank-line">{formData.bankAddress || '97 Main Street, Midleton, Co. Cork'}</div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </>
+                                        );
+                                    })()}
+
+                                    {/* 8. PAGE FOOTER */}
+                                    <div className="invoice-cea-page-footer">
+                                        Page 1 of 1
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'payment' && (
+                        <div className="companySetting-form-section companySetting-fade-in">
+                            <div className="invoice-settings-layout">
+                                {/* Left Controls */}
+                                <div className="invoice-controls">
+                                    <h3 style={{ marginTop: 0, marginBottom: '1.5rem' }}>Receipt/Payment Labels</h3>
+                                    <p style={{ fontSize: '0.82rem', color: '#64748b', margin: '0 0 1.5rem 0' }}>
+                                        Customize the text labels and table headers for both Customer Payments (Receipts) and Vendor Payments (Bills).
+                                    </p>
+
+                                    <div className="companySetting-logo-section" style={{ border: 'none', padding: 0 }}>
+                                        <h4 style={{ margin: '0 0 1rem 0', color: '#1e293b', fontSize: '1rem', fontWeight: 'bold' }}>Document Labels</h4>
+                                        <div className="companySetting-form-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.8rem' }}>
+                                            {[
+                                                { key: 'number', label: 'Receipt/Payment No Label' },
+                                                { key: 'date', label: 'Payment Date Label' },
+                                                { key: 'invoiceRef', label: 'Invoice/Bill Ref Label' },
+                                                { key: 'receivedFrom', label: 'Received From / Paid To Label' },
+                                                { key: 'receivedInto', label: 'Received Into / Paid From Label' },
+                                                { key: 'mode', label: 'Payment Mode Label' },
+                                                { key: 'refNo', label: 'Ref No Label' },
+                                                { key: 'discount', label: 'Discount Allowed/Received Label' },
+                                                { key: 'discountAccount', label: 'Discount Account Label' },
+                                                { key: 'notes', label: 'Remarks/Notes Label' },
+                                                { key: 'signature', label: 'Signature Label' }
+                                            ].map(({ key, label }) => (
+                                                <div key={key} className="companySetting-form-group" style={{ marginBottom: 0 }}>
+                                                    <label style={{ fontSize: '0.8rem', color: '#475569' }}>{label}</label>
+                                                    <input
+                                                        type="text"
+                                                        value={receiptLabels[key] || ''}
+                                                        onChange={(e) => handleLabelChange(key, e.target.value)}
+                                                        style={{ padding: '0.5rem', fontSize: '0.9rem', width: '100%' }}
+                                                    />
+                                                </div>
+                                            ))}
+                                            <div className="companySetting-form-group" style={{ marginBottom: 0, gridColumn: 'span 2' }}>
+                                                <label style={{ fontSize: '0.8rem', color: '#475569' }}>Satisfaction Text Description</label>
+                                                <textarea
+                                                    rows="2"
+                                                    value={receiptLabels.satisfaction || ''}
+                                                    onChange={(e) => handleLabelChange('satisfaction', e.target.value)}
+                                                    style={{ padding: '0.5rem', fontSize: '0.9rem', width: '100%', borderRadius: '8px', border: '1px solid #e2e8f0' }}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="companySetting-logo-section" style={{ border: 'none', padding: 0, marginTop: '1.5rem', borderTop: '1px solid #eee', paddingTop: '1.5rem' }}>
+                                        <h4 style={{ margin: '0 0 1rem 0', color: '#1e293b', fontSize: '1rem', fontWeight: 'bold' }}>Table Headers</h4>
+                                        <div className="companySetting-form-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.8rem' }}>
+                                            {[
+                                                { key: 'number', label: 'Invoice/Bill Number Col' },
+                                                { key: 'date', label: 'Invoice/Bill Date Col' },
+                                                { key: 'amount', label: 'Invoice/Bill Amount Col' },
+                                                { key: 'allocatedAmount', label: 'Allocated Amount Col' },
+                                                { key: 'balanceDue', label: 'Balance Due Col' }
+                                            ].map(({ key, label }) => (
+                                                <div key={key} className="companySetting-form-group" style={{ marginBottom: 0 }}>
+                                                    <label style={{ fontSize: '0.8rem', color: '#475569' }}>{label}</label>
+                                                    <input
+                                                        type="text"
+                                                        value={
+                                                            key === 'number' ? receiptTableHeaders.invoiceNumber :
+                                                                key === 'date' ? receiptTableHeaders.invoiceDate :
+                                                                    key === 'amount' ? receiptTableHeaders.invoiceAmount :
+                                                                        receiptTableHeaders[key] || ''
+                                                        }
+                                                        onChange={(e) => handleHeaderChange(key, e.target.value)}
+                                                        style={{ padding: '0.5rem', fontSize: '0.9rem', width: '100%' }}
+                                                    />
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {hasPermission('edit settings') && (
+                                        <div style={{ marginTop: '2rem' }}>
+                                            <button
+                                                className="companySetting-btn-primary"
+                                                onClick={handleSave}
+                                                style={{ backgroundColor: '#1e293b', width: '100%', justifyContent: 'center' }}
+                                            >
+                                                Save Changes
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Right Preview Panel with Toggle */}
+                                <div style={{ display: 'flex', flexDirection: 'column', width: '100%', gap: '1rem' }}>
+                                    <div className="preview-type-toggle" style={{ display: 'flex', gap: '0.5rem', background: '#f1f5f9', padding: '4px', borderRadius: '8px', width: 'fit-content' }}>
+                                        <button
+                                            type="button"
+                                            onClick={() => setPaymentPreviewType('receipt')}
+                                            style={{
+                                                padding: '0.5rem 1rem',
+                                                borderRadius: '6px',
+                                                border: 'none',
+                                                cursor: 'pointer',
+                                                fontSize: '0.85rem',
+                                                fontWeight: '600',
+                                                backgroundColor: paymentPreviewType === 'receipt' ? 'white' : 'transparent',
+                                                color: paymentPreviewType === 'receipt' ? '#1e293b' : '#64748b',
+                                                boxShadow: paymentPreviewType === 'receipt' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                                                transition: 'all 0.2s'
+                                            }}
+                                        >
+                                            Customer Receipt Preview
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setPaymentPreviewType('payment')}
+                                            style={{
+                                                padding: '0.5rem 1rem',
+                                                borderRadius: '6px',
+                                                border: 'none',
+                                                cursor: 'pointer',
+                                                fontSize: '0.85rem',
+                                                fontWeight: '600',
+                                                backgroundColor: paymentPreviewType === 'payment' ? 'white' : 'transparent',
+                                                color: paymentPreviewType === 'payment' ? '#1e293b' : '#64748b',
+                                                boxShadow: paymentPreviewType === 'payment' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                                                transition: 'all 0.2s'
+                                            }}
+                                        >
+                                            Vendor Payment Preview
+                                        </button>
+                                    </div>
+
+                                    {paymentPreviewType === 'receipt' ? (
+                                        <div className="invoice-preview-container">
+                                            <div className="invoice-header-wrapper">
+                                                <div className="invoice-preview-header">
+                                                    <div className="invoice-header-left">
+                                                        {logoPreview ? (
+                                                            <img src={logoPreview} alt="Logo" className="invoice-logo-large" />
+                                                        ) : (
+                                                            <h2 style={{ color: '#004aad', margin: 0 }}>ZB</h2>
+                                                        )}
+
+                                                        <div className="invoice-company-details">
+                                                            <strong>{formData.name}</strong><br />
+                                                            {formData.email}<br />
+                                                            {formData.phone}<br />
+                                                            {formData.address}, {formData.city}<br />
+                                                            {formData.country} - {formData.zip}<br />
+                                                        </div>
+                                                    </div>
+                                                    <div className="invoice-header-right">
+                                                        <div className="invoice-title-large" style={{ color: '#004aad' }}>{documentTitles.receipt || 'RECEIPT'}</div>
+                                                        <div className="invoice-meta-info">
+                                                            <div className="invoice-meta-row">
+                                                                <span className="invoice-label">{receiptLabels.number}</span> #REC-17806493
+                                                            </div>
+                                                            <div className="invoice-meta-row">
+                                                                <span className="invoice-label">{receiptLabels.date}</span> Jan 17, 2026
+                                                            </div>
+                                                            <div className="invoice-meta-row">
+                                                                <span className="invoice-label">{receiptLabels.invoiceRef}</span> #INVO00001
+                                                            </div>
+                                                        </div>
+                                                        {invoiceSettings.showQr && (
+                                                            <div className="invoice-qr-box">
+                                                                <img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=ReceiptDemo" alt="QR" className="invoice-qr-code" />
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="invoice-addresses">
+                                                <div className="invoice-bill-to">
+                                                    <div className="invoice-section-header">{receiptLabels.receivedFrom}</div>
+                                                    <div>&lt;Customer Name&gt;</div>
+                                                    <div>&lt;Address&gt;</div>
+                                                    <div>&lt;City&gt;, &lt;State&gt; &lt;Zip&gt;</div>
+                                                </div>
+                                                <div className="invoice-ship-to" style={{ textAlign: 'right' }}>
+                                                    <div className="invoice-section-header">Payment Summary</div>
+                                                    <div><span className="invoice-label">{receiptLabels.receivedInto}</span> Cash on Hand</div>
+                                                    <div><span className="invoice-label">{receiptLabels.mode}</span> Cash</div>
+                                                    <div><span className="invoice-label">{receiptLabels.refNo}</span> TRN-0001</div>
+                                                </div>
+                                            </div>
+
+                                            <div className="pp-receipt-satisfaction-banner" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', padding: '20px', borderRadius: '8px', border: '1px solid #e2e8f0', margin: '20px 0' }}>
+                                                <span style={{ fontSize: '0.9rem', color: '#64748b' }}>
+                                                    {receiptLabels.satisfaction ? receiptLabels.satisfaction.replace('{amount}', '$2,500.00').replace('{discountText}', '') : ''}
+                                                </span>
+                                                <strong style={{ fontSize: '1.5rem', color: '#10b981' }}>$2,500.00</strong>
+                                            </div>
+
+                                            <table className="invoice-table-preview">
+                                                <thead>
+                                                    <tr>
+                                                        <th>{receiptTableHeaders.invoiceNumber}</th>
+                                                        <th>{receiptTableHeaders.invoiceDate}</th>
+                                                        <th>{receiptTableHeaders.invoiceAmount}</th>
+                                                        <th>{receiptTableHeaders.allocatedAmount}</th>
+                                                        <th style={{ textAlign: 'right' }}>{receiptTableHeaders.balanceDue}</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <tr>
+                                                        <td>#INVO00001</td>
+                                                        <td>Jan 17, 2026</td>
+                                                        <td>$5,000.00</td>
+                                                        <td>$2,500.00</td>
+                                                        <td style={{ textAlign: 'right', fontWeight: 'bold', color: '#ef4444' }}>$2,500.00</td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+
+                                            <div className="invoice-total-section" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: '3rem' }}>
+                                                <div style={{ maxWidth: '60%', fontSize: '0.8rem', color: '#64748b' }}>
+                                                    <strong>{receiptLabels.notes}</strong><br />
+                                                    No additional remarks.
+                                                </div>
+                                                <div className="pp-receipt-signature-section" style={{ textAlign: 'center' }}>
+                                                    <div className="pp-receipt-signature-line" style={{ borderTop: '1px solid #1e293b', width: '180px', margin: '0 auto 8px auto' }}></div>
+                                                    <div className="pp-receipt-signature-label" style={{ fontSize: '0.75rem', fontWeight: 'bold' }}>{receiptLabels.signature}</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="invoice-preview-container">
+                                            <div className="invoice-header-wrapper">
+                                                <div className="invoice-preview-header">
+                                                    <div className="invoice-header-left">
+                                                        {logoPreview ? (
+                                                            <img src={logoPreview} alt="Logo" className="invoice-logo-large" />
+                                                        ) : (
+                                                            <h2 style={{ color: '#004aad', margin: 0 }}>ZB</h2>
+                                                        )}
+
+                                                        <div className="invoice-company-details">
+                                                            <strong>{formData.name}</strong><br />
+                                                            {formData.email}<br />
+                                                            {formData.phone}<br />
+                                                            {formData.address}, {formData.city}<br />
+                                                            {formData.country} - {formData.zip}<br />
+                                                        </div>
+                                                    </div>
+                                                    <div className="invoice-header-right">
+                                                        <div className="invoice-title-large" style={{ color: '#004aad' }}>{documentTitles.payment || 'PAYMENT VOUCHER'}</div>
+                                                        <div className="invoice-meta-info">
+                                                            <div className="invoice-meta-row">
+                                                                <span className="invoice-label">{paymentLabels.number}</span> #PAY-17806493
+                                                            </div>
+                                                            <div className="invoice-meta-row">
+                                                                <span className="invoice-label">{paymentLabels.date}</span> Jan 17, 2026
+                                                            </div>
+                                                            <div className="invoice-meta-row">
+                                                                <span className="invoice-label">{paymentLabels.invoiceRef}</span> #BILL-0001
+                                                            </div>
+                                                        </div>
+                                                        {invoiceSettings.showQr && (
+                                                            <div className="invoice-qr-box">
+                                                                <img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=PaymentDemo" alt="QR" className="invoice-qr-code" />
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="invoice-addresses">
+                                                <div className="invoice-bill-to">
+                                                    <div className="invoice-section-header">{paymentLabels.receivedFrom}</div>
+                                                    <div>&lt;Vendor Name&gt;</div>
+                                                    <div>&lt;Address&gt;</div>
+                                                    <div>&lt;City&gt;, &lt;State&gt; &lt;Zip&gt;</div>
+                                                </div>
+                                                <div className="invoice-ship-to" style={{ textAlign: 'right' }}>
+                                                    <div className="invoice-section-header">Payment Summary</div>
+                                                    <div><span className="invoice-label">{paymentLabels.paidFrom}</span> Chase Checking</div>
+                                                    <div><span className="invoice-label">{paymentLabels.mode}</span> Bank Transfer</div>
+                                                    <div><span className="invoice-label">{paymentLabels.refNo}</span> TRN-0001</div>
+                                                </div>
+                                            </div>
+
+                                            <div className="pp-receipt-satisfaction-banner" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', padding: '20px', borderRadius: '8px', border: '1px solid #e2e8f0', margin: '20px 0' }}>
+                                                <span style={{ fontSize: '0.9rem', color: '#64748b' }}>
+                                                    {paymentLabels.satisfaction ? paymentLabels.satisfaction.replace('{amount}', '$3,200.00').replace('{discountText}', '') : ''}
+                                                </span>
+                                                <strong style={{ fontSize: '1.5rem', color: '#10b981' }}>$3,200.00</strong>
+                                            </div>
+
+                                            <table className="invoice-table-preview">
+                                                <thead>
+                                                    <tr>
+                                                        <th>{paymentTableHeaders.billNumber}</th>
+                                                        <th>{paymentTableHeaders.billDate}</th>
+                                                        <th>{paymentTableHeaders.billAmount}</th>
+                                                        <th>{paymentTableHeaders.allocatedAmount}</th>
+                                                        <th style={{ textAlign: 'right' }}>{paymentTableHeaders.balanceDue}</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <tr>
+                                                        <td>#BILL-0001</td>
+                                                        <td>Jan 17, 2026</td>
+                                                        <td>$4,000.00</td>
+                                                        <td>$3,200.00</td>
+                                                        <td style={{ textAlign: 'right', fontWeight: 'bold', color: '#ef4444' }}>$800.00</td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+
+                                            <div className="invoice-total-section" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: '3rem' }}>
+                                                <div style={{ maxWidth: '60%', fontSize: '0.8rem', color: '#64748b' }}>
+                                                    <strong>{paymentLabels.notes}</strong><br />
+                                                    Payment sent in full settlement.
+                                                </div>
+                                                <div className="pp-receipt-signature-section" style={{ textAlign: 'center' }}>
+                                                    <div className="pp-receipt-signature-line" style={{ borderTop: '1px solid #1e293b', width: '180px', margin: '0 auto 8px auto' }}></div>
+                                                    <div className="pp-receipt-signature-label" style={{ fontSize: '0.75rem', fontWeight: 'bold' }}>{paymentLabels.signature}</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'inventory' && (
+                        <div className="companySetting-form-section companySetting-fade-in">
+                            <h3 className="companySetting-section-title" style={{ marginBottom: '0.3rem' }}>Inventory Valuation Method</h3>
+                            <p style={{ fontSize: '0.88rem', color: '#666', marginBottom: '1.5rem' }}>Choose how the cost of goods sold (COGS) and inventory value are calculated when products are sold.</p>
+
+                            {/* Valuation Method */}
+                            <div className="companySetting-form-group full-width" style={{ marginBottom: '2rem' }}>
+                                <div style={{ display: 'flex', gap: '1.2rem', flexWrap: 'wrap' }}>
+                                    {[
+                                        { value: 'FIFO', label: 'FIFO', desc: 'First In First Out — Oldest stock sold first. Exact batch-level cost tracking.' },
+                                        { value: 'WAC', label: 'Weighted Average Cost', desc: 'Averages purchase costs. Simpler and suitable for most businesses.' }
+                                    ].map(opt => (
+                                        <label key={opt.value} onClick={() => setInventorySettings({ ...inventorySettings, valuationMethod: opt.value })} style={{
+                                            flex: '1 1 220px',
+                                            display: 'flex',
+                                            alignItems: 'flex-start',
+                                            gap: '1rem',
+                                            cursor: 'pointer',
+                                            backgroundColor: inventorySettings.valuationMethod === opt.value ? '#f8fafc' : '#f9fafb',
+                                            border: inventorySettings.valuationMethod === opt.value ? '2px solid #1e293b' : '1px solid #e5e7eb',
+                                            padding: '1.3rem 1.5rem',
+                                            borderRadius: '0.8rem',
+                                            transition: 'all 0.2s'
+                                        }}>
+                                            <input
+                                                type="radio"
+                                                name="valuationMethod"
+                                                value={opt.value}
+                                                checked={inventorySettings.valuationMethod === opt.value}
+                                                onChange={() => setInventorySettings({ ...inventorySettings, valuationMethod: opt.value })}
+                                                style={{ width: '1.2rem', height: '1.2rem', marginTop: '0.15rem', accentColor: '#1e293b' }}
+                                            />
+                                            <div>
+                                                <strong style={{ display: 'block', marginBottom: '0.25rem', color: '#1e293b' }}>{opt.label}</strong>
+                                                <span style={{ fontSize: '0.82rem', color: '#666' }}>{opt.desc}</span>
+                                            </div>
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <h3 className="companySetting-section-title" style={{ marginBottom: '1rem' }}>Stock Management Logic</h3>
+
+                            <div className="companySetting-form-grid" style={{ gap: '1.2rem' }}>
+
+                                {/* Negative Stock Allow */}
+                                <div className="companySetting-form-group full-width">
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f9fafb', padding: '1.2rem 1.5rem', borderRadius: '0.8rem', border: '1px solid #e5e7eb' }}>
+                                        <div>
+                                            <h4 style={{ margin: 0, marginBottom: '0.2rem' }}>Allow Negative Stock</h4>
+                                            <p style={{ margin: 0, fontSize: '0.88rem', color: '#666' }}>Allow sales even when stock is zero or negative</p>
+                                        </div>
+                                        <label className="switch-label">
+                                            <input type="checkbox" className="switch-input" checked={inventorySettings.negativeStockAllow} onChange={(e) => setInventorySettings({ ...inventorySettings, negativeStockAllow: e.target.checked })} />
+                                            <div className="switch-toggle" />
+                                        </label>
+                                    </div>
+                                </div>
+
+                                {/* Auto COGS Entry */}
+                                <div className="companySetting-form-group full-width">
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f9fafb', padding: '1.2rem 1.5rem', borderRadius: '0.8rem', border: '1px solid #e5e7eb' }}>
+                                        <div>
+                                            <h4 style={{ margin: 0, marginBottom: '0.2rem' }}>Auto COGS Journal Entry</h4>
+                                            <p style={{ margin: 0, fontSize: '0.88rem', color: '#666' }}>Automatically post Dr COGS / Cr Inventory Asset on every sale</p>
+                                        </div>
+                                        <label className="switch-label">
+                                            <input type="checkbox" className="switch-input" checked={inventorySettings.autoCogsEntry} onChange={(e) => setInventorySettings({ ...inventorySettings, autoCogsEntry: e.target.checked })} />
+                                            <div className="switch-toggle" />
+                                        </label>
+                                    </div>
+                                </div>
+
+                                {/* Batch Tracking */}
+                                <div className="companySetting-form-group full-width">
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f9fafb', padding: '1.2rem 1.5rem', borderRadius: '0.8rem', border: '1px solid #e5e7eb' }}>
+                                        <div>
+                                            <h4 style={{ margin: 0, marginBottom: '0.2rem' }}>Batch / Lot Tracking</h4>
+                                            <p style={{ margin: 0, fontSize: '0.88rem', color: '#666' }}>Track products by batch or lot number (Pharmaceutical, Food, etc.)</p>
+                                        </div>
+                                        <label className="switch-label">
+                                            <input type="checkbox" className="switch-input" checked={inventorySettings.batchTracking} onChange={(e) => setInventorySettings({ ...inventorySettings, batchTracking: e.target.checked })} />
+                                            <div className="switch-toggle" />
+                                        </label>
+                                    </div>
+                                </div>
+
+                                {/* Expiry Tracking */}
+                                <div className="companySetting-form-group full-width">
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f9fafb', padding: '1.2rem 1.5rem', borderRadius: '0.8rem', border: '1px solid #e5e7eb' }}>
+                                        <div>
+                                            <h4 style={{ margin: 0, marginBottom: '0.2rem' }}>Expiry Date Tracking</h4>
+                                            <p style={{ margin: 0, fontSize: '0.88rem', color: '#666' }}>Track expiry dates on purchase batches and alert on near-expiry stock</p>
+                                        </div>
+                                        <label className="switch-label">
+                                            <input type="checkbox" className="switch-input" checked={inventorySettings.expiryTracking} onChange={(e) => setInventorySettings({ ...inventorySettings, expiryTracking: e.target.checked })} />
+                                            <div className="switch-toggle" />
+                                        </label>
+                                    </div>
+                                </div>
+
+                                {/* Reserve on Quotation */}
+                                <div className="companySetting-form-group full-width">
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f9fafb', padding: '1.2rem 1.5rem', borderRadius: '0.8rem', border: '1px solid #e5e7eb' }}>
+                                        <div>
+                                            <h4 style={{ margin: 0, marginBottom: '0.2rem' }}>Reserve on Quotation</h4>
+                                            <p style={{ margin: 0, fontSize: '0.88rem', color: '#666' }}>Automatically reserve stock when a quotation is created</p>
+                                        </div>
+                                        <label className="switch-label">
+                                            <input type="checkbox" className="switch-input" checked={inventorySettings.reserveOnQuotation} onChange={(e) => setInventorySettings({ ...inventorySettings, reserveOnQuotation: e.target.checked })} />
+                                            <div className="switch-toggle" />
+                                        </label>
+                                    </div>
+                                </div>
+
+                                {/* Reserve on Sales Order */}
+                                <div className="companySetting-form-group full-width">
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f9fafb', padding: '1.2rem 1.5rem', borderRadius: '0.8rem', border: '1px solid #e5e7eb' }}>
+                                        <div>
+                                            <h4 style={{ margin: 0, marginBottom: '0.2rem' }}>Reserve on Sales Order</h4>
+                                            <p style={{ margin: 0, fontSize: '0.88rem', color: '#666' }}>Automatically reserve stock when a sales order is created</p>
+                                        </div>
+                                        <label className="switch-label">
+                                            <input type="checkbox" className="switch-input" checked={inventorySettings.reserveOnSO} onChange={(e) => setInventorySettings({ ...inventorySettings, reserveOnSO: e.target.checked })} />
+                                            <div className="switch-toggle" />
+                                        </label>
+                                    </div>
+                                </div>
+
+                                {/* Delivery Challan */}
+                                <div className="companySetting-form-group full-width">
+                                    <div style={{ backgroundColor: '#f9fafb', padding: '1.2rem 1.5rem', borderRadius: '0.8rem', border: '1px solid #e5e7eb' }}>
+                                        <h4 style={{ margin: 0, marginBottom: '1rem' }}>Delivery Challan Behavior</h4>
+                                        <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
+                                            {[
+                                                { value: 'ISSUE', label: 'Issue Stock', desc: 'Decrement total stock immediately (Default)' },
+                                                { value: 'RESERVE', label: 'Reserve Stock', desc: 'Move stock to reserved but remain in total stock' }
+                                            ].map(opt => (
+                                                <label key={opt.value} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.8rem', cursor: 'pointer' }}>
+                                                    <input
+                                                        type="radio"
+                                                        name="challanAction"
+                                                        value={opt.value}
+                                                        checked={inventorySettings.challanAction === opt.value}
+                                                        onChange={(e) => setInventorySettings({ ...inventorySettings, challanAction: e.target.value })}
+                                                        style={{ width: '1.2rem', height: '1.2rem', marginTop: '0.1rem', accentColor: '#1e293b' }}
+                                                    />
+                                                    <div>
+                                                        <strong style={{ display: 'block' }}>{opt.label}</strong>
+                                                        <div style={{ fontSize: '0.82rem', color: '#666' }}>{opt.desc}</div>
+                                                    </div>
+                                                </label>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Default Warehouses */}
+                                <div className="companySetting-form-group full-width">
+                                    <div style={{ backgroundColor: '#f9fafb', padding: '1.2rem 1.5rem', borderRadius: '0.8rem', border: '1px solid #e5e7eb' }}>
+                                        <h4 style={{ margin: 0, marginBottom: '1rem' }}>Default Warehouse Settings</h4>
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1.5rem' }}>
+                                            <div>
+                                                <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: 'bold', marginBottom: '0.5rem', color: '#374151' }}>
+                                                    Default Warehouse (Sales Section)
+                                                </label>
+                                                <select
+                                                    value={inventorySettings.defaultSalesWarehouseId || ''}
+                                                    onChange={(e) => setInventorySettings({ ...inventorySettings, defaultSalesWarehouseId: e.target.value })}
+                                                    style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '0.4rem', border: '1px solid #d1d5db', backgroundColor: 'white' }}
+                                                >
+                                                    <option value="">-- Select default warehouse --</option>
+                                                    {warehouses.map(w => (
+                                                        <option key={w.id} value={w.id}>{w.name}</option>
+                                                    ))}
+                                                </select>
+                                                <p style={{ margin: 0, marginTop: '0.3rem', fontSize: '0.8rem', color: '#6b7280' }}>
+                                                    Auto-populated when creating quotations, sales orders, delivery challans, and invoices
+                                                </p>
+                                            </div>
+                                            <div>
+                                                <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: 'bold', marginBottom: '0.5rem', color: '#374151' }}>
+                                                    Default Warehouse (Purchase Section)
+                                                </label>
+                                                <select
+                                                    value={inventorySettings.defaultPurchaseWarehouseId || ''}
+                                                    onChange={(e) => setInventorySettings({ ...inventorySettings, defaultPurchaseWarehouseId: e.target.value })}
+                                                    style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '0.4rem', border: '1px solid #d1d5db', backgroundColor: 'white' }}
+                                                >
+                                                    <option value="">-- Select default warehouse --</option>
+                                                    {warehouses.map(w => (
+                                                        <option key={w.id} value={w.id}>{w.name}</option>
+                                                    ))}
+                                                </select>
+                                                <p style={{ margin: 0, marginTop: '0.3rem', fontSize: '0.8rem', color: '#6b7280' }}>
+                                                    Auto-populated when creating purchase quotations, purchase orders, GRNs, and purchase bills
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'salesSection' && (
+                        <div className="companySetting-form-section companySetting-fade-in">
+                            <h3 className="companySetting-section-title" style={{ marginTop: 0 }}>Sales Policies, Terms &amp; Default Notes</h3>
+                            <div className="companySetting-form-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)', gap: '1.5rem', marginBottom: '2.5rem' }}>
+                                <div className="companySetting-form-group">
+                                    <label>Invoice Terms &amp; Conditions</label>
+                                    <div className="companySetting-icon-wrapper">
+                                        <FileText size={18} className="companySetting-icon" />
+                                        <textarea rows="3" value={formData.termsInvoice} onChange={(e) => setFormData({ ...formData, termsInvoice: e.target.value })} placeholder="e.g. Payment due in 30 days"></textarea>
+                                    </div>
+                                </div>
+                                <div className="companySetting-form-group">
+                                    <label>Receipt Terms &amp; Conditions</label>
+                                    <div className="companySetting-icon-wrapper">
+                                        <FileText size={18} className="companySetting-icon" />
+                                        <textarea rows="3" value={formData.termsReceipt} onChange={(e) => setFormData({ ...formData, termsReceipt: e.target.value })} placeholder="e.g. No refunds after 7 days"></textarea>
+                                    </div>
+                                </div>
+                                <div className="companySetting-form-group">
+                                    <label>Quotation Terms &amp; Conditions</label>
+                                    <div className="companySetting-icon-wrapper">
+                                        <FileText size={18} className="companySetting-icon" />
+                                        <textarea rows="3" value={formData.termsQuotation} onChange={(e) => setFormData({ ...formData, termsQuotation: e.target.value })} placeholder="e.g. Valid for 15 days"></textarea>
+                                    </div>
+                                </div>
+                                <div className="companySetting-form-group">
+                                    <label>Sales Order Terms &amp; Conditions</label>
+                                    <div className="companySetting-icon-wrapper">
+                                        <FileText size={18} className="companySetting-icon" />
+                                        <textarea rows="3" value={formData.termsSalesOrder} onChange={(e) => setFormData({ ...formData, termsSalesOrder: e.target.value })} placeholder="Enter sales order default terms..."></textarea>
+                                    </div>
+                                </div>
+                                <div className="companySetting-form-group">
+                                    <label>Credit Note Terms &amp; Conditions</label>
+                                    <div className="companySetting-icon-wrapper">
+                                        <FileText size={18} className="companySetting-icon" />
+                                        <textarea rows="3" value={formData.termsCreditNote} onChange={(e) => setFormData({ ...formData, termsCreditNote: e.target.value })} placeholder="Enter credit note default terms..."></textarea>
+                                    </div>
+                                </div>
+                                <div className="companySetting-form-group full-width" style={{ gridColumn: 'span 2' }}>
+                                    <label>Default Notes</label>
+                                    <div className="companySetting-icon-wrapper">
+                                        <StickyNote size={18} className="companySetting-icon" />
+                                        <textarea rows="3" value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} placeholder="Enter default notes for customers..."></textarea>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <h3 className="companySetting-section-title" style={{ marginTop: '1.5rem' }}>Sales Document Titles</h3>
+                            <p style={{ fontSize: '0.88rem', color: '#666', marginBottom: '1.5rem' }}>
+                                Customize main document titles printed on Sales invoices, quotations, orders, and receipts.
+                            </p>
+                            <div className="companySetting-form-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)', gap: '1.5rem', marginBottom: '2.5rem' }}>
+                                {salesTitlesList.map(({ key, label, placeholder }) => (
+                                    <div key={key} className="companySetting-form-group" style={{ marginBottom: 0 }}>
+                                        <label style={{ fontSize: '0.9rem', fontWeight: '500', color: '#374151' }}>{label}</label>
+                                        <input
+                                            type="text"
+                                            value={documentTitles[key] || ''}
+                                            onChange={(e) => setDocumentTitles({ ...documentTitles, [key]: e.target.value })}
+                                            placeholder={`Default: ${placeholder}`}
+                                            style={{ padding: '0.8rem', borderRadius: '8px', border: '1px solid #cbd5e1', width: '100%', fontSize: '0.95rem' }}
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+
+                            <h3 className="companySetting-section-title" style={{ marginTop: '2rem' }}>Sales Serial Numbering</h3>
+                            <p className="companySetting-page-subtitle" style={{ marginBottom: '1.5rem' }}>
+                                Configure custom prefixes, sequence numbers, padding formats, and generation patterns for Sales transactions.
+                            </p>
+                            <div className="numbering-settings-grid">
+                                <table className="numbering-settings-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Transaction Type</th>
+                                            <th>Prefix</th>
+                                            <th>Starting Suffix</th>
+                                            <th>Padding Length</th>
+                                            <th>Pattern Type</th>
+                                            <th>Next Number (Preview)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {numberingSettings
+                                            .filter(s => salesTypes.includes(s.transactionType))
+                                            .map((setting) => {
+                                                const index = numberingSettings.findIndex(ns => ns.transactionType === setting.transactionType);
+                                                const displayName = getTransactionTypeDisplayName(setting.transactionType);
+                                                const preview = previewNextNumber(setting);
+                                                return (
+                                                    <tr key={setting.transactionType}>
+                                                        <td className="transaction-type-cell">
+                                                            <strong>{displayName}</strong>
+                                                        </td>
+                                                        <td>
+                                                            <input
+                                                                type="text"
+                                                                value={setting.prefix || ''}
+                                                                onChange={(e) => handleNumberingFieldChange(index, 'prefix', e.target.value)}
+                                                                className="numbering-input-prefix"
+                                                                placeholder="e.g. INV-"
+                                                            />
+                                                        </td>
+                                                        <td>
+                                                            <input
+                                                                type="number"
+                                                                value={setting.currentNumber}
+                                                                onChange={(e) => handleNumberingFieldChange(index, 'currentNumber', parseInt(e.target.value) || 1)}
+                                                                className="numbering-input-number"
+                                                                min="1"
+                                                            />
+                                                        </td>
+                                                        <td>
+                                                            <select
+                                                                value={setting.paddingLength}
+                                                                onChange={(e) => handleNumberingFieldChange(index, 'paddingLength', parseInt(e.target.value) || 4)}
+                                                                className="numbering-select-padding"
+                                                            >
+                                                                <option value="2">2 (01)</option>
+                                                                <option value="3">3 (001)</option>
+                                                                <option value="4">4 (0001)</option>
+                                                                <option value="5">5 (00001)</option>
+                                                                <option value="6">6 (000001)</option>
+                                                            </select>
+                                                        </td>
+                                                        <td>
+                                                            <select
+                                                                value={setting.pattern}
+                                                                onChange={(e) => handleNumberingFieldChange(index, 'pattern', e.target.value)}
+                                                                className="numbering-select-pattern"
+                                                            >
+                                                                <option value="numeric">Numeric (0001)</option>
+                                                                <option value="alphanumeric">Alphanumeric (000A)</option>
+                                                                <option value="custom">Custom</option>
+                                                            </select>
+                                                        </td>
+                                                        <td className="numbering-preview-cell">
+                                                            <span className="numbering-preview-tag">{preview}</span>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'purchaseSection' && (
+                        <div className="companySetting-form-section companySetting-fade-in">
+                            <h3 className="companySetting-section-title" style={{ marginTop: 0 }}>Purchase Policies &amp; Terms</h3>
+                            <div className="companySetting-form-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)', gap: '1.5rem', marginBottom: '2.5rem' }}>
+                                <div className="companySetting-form-group">
+                                    <label>Purchase Terms &amp; Conditions</label>
+                                    <div className="companySetting-icon-wrapper">
+                                        <FileText size={18} className="companySetting-icon" />
+                                        <textarea rows="3" value={formData.termsPurchase} onChange={(e) => setFormData({ ...formData, termsPurchase: e.target.value })} placeholder="e.g. Net 45 days"></textarea>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <h3 className="companySetting-section-title" style={{ marginTop: '1.5rem' }}>Purchase Document Titles</h3>
+                            <p style={{ fontSize: '0.88rem', color: '#666', marginBottom: '1.5rem' }}>
+                                Customize main document titles printed on Purchase orders, bills, quotations, GRNs, and payments.
+                            </p>
+                            <div className="companySetting-form-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)', gap: '1.5rem', marginBottom: '2.5rem' }}>
+                                {purchaseTitlesList.map(({ key, label, placeholder }) => (
+                                    <div key={key} className="companySetting-form-group" style={{ marginBottom: 0 }}>
+                                        <label style={{ fontSize: '0.9rem', fontWeight: '500', color: '#374151' }}>{label}</label>
+                                        <input
+                                            type="text"
+                                            value={documentTitles[key] || ''}
+                                            onChange={(e) => setDocumentTitles({ ...documentTitles, [key]: e.target.value })}
+                                            placeholder={`Default: ${placeholder}`}
+                                            style={{ padding: '0.8rem', borderRadius: '8px', border: '1px solid #cbd5e1', width: '100%', fontSize: '0.95rem' }}
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+
+                            <h3 className="companySetting-section-title" style={{ marginTop: '2rem' }}>Purchase Serial Numbering</h3>
+                            <p className="companySetting-page-subtitle" style={{ marginBottom: '1.5rem' }}>
+                                Configure custom prefixes, sequence numbers, padding formats, and generation patterns for Purchase transactions.
+                            </p>
+                            <div className="numbering-settings-grid">
+                                <table className="numbering-settings-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Transaction Type</th>
+                                            <th>Prefix</th>
+                                            <th>Starting Suffix</th>
+                                            <th>Padding Length</th>
+                                            <th>Pattern Type</th>
+                                            <th>Next Number (Preview)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {numberingSettings
+                                            .filter(s => purchaseTypes.includes(s.transactionType))
+                                            .map((setting) => {
+                                                const index = numberingSettings.findIndex(ns => ns.transactionType === setting.transactionType);
+                                                const displayName = getTransactionTypeDisplayName(setting.transactionType);
+                                                const preview = previewNextNumber(setting);
+                                                return (
+                                                    <tr key={setting.transactionType}>
+                                                        <td className="transaction-type-cell">
+                                                            <strong>{displayName}</strong>
+                                                        </td>
+                                                        <td>
+                                                            <input
+                                                                type="text"
+                                                                value={setting.prefix || ''}
+                                                                onChange={(e) => handleNumberingFieldChange(index, 'prefix', e.target.value)}
+                                                                className="numbering-input-prefix"
+                                                                placeholder="e.g. PO-"
+                                                            />
+                                                        </td>
+                                                        <td>
+                                                            <input
+                                                                type="number"
+                                                                value={setting.currentNumber}
+                                                                onChange={(e) => handleNumberingFieldChange(index, 'currentNumber', parseInt(e.target.value) || 1)}
+                                                                className="numbering-input-number"
+                                                                min="1"
+                                                            />
+                                                        </td>
+                                                        <td>
+                                                            <select
+                                                                value={setting.paddingLength}
+                                                                onChange={(e) => handleNumberingFieldChange(index, 'paddingLength', parseInt(e.target.value) || 4)}
+                                                                className="numbering-select-padding"
+                                                            >
+                                                                <option value="2">2 (01)</option>
+                                                                <option value="3">3 (001)</option>
+                                                                <option value="4">4 (0001)</option>
+                                                                <option value="5">5 (00001)</option>
+                                                                <option value="6">6 (000001)</option>
+                                                            </select>
+                                                        </td>
+                                                        <td>
+                                                            <select
+                                                                value={setting.pattern}
+                                                                onChange={(e) => handleNumberingFieldChange(index, 'pattern', e.target.value)}
+                                                                className="numbering-select-pattern"
+                                                            >
+                                                                <option value="numeric">Numeric (0001)</option>
+                                                                <option value="alphanumeric">Alphanumeric (000A)</option>
+                                                                <option value="custom">Custom</option>
+                                                            </select>
+                                                        </td>
+                                                        <td className="numbering-preview-cell">
+                                                            <span className="numbering-preview-tag">{preview}</span>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'otherSection' && (
+                        <div className="companySetting-form-section companySetting-fade-in">
+                            <h3 className="companySetting-section-title" style={{ marginTop: 0 }}>Voucher &amp; Capital Document Titles</h3>
+                            <p style={{ fontSize: '0.88rem', color: '#666', marginBottom: '1.5rem' }}>
+                                Customize main document titles printed on GRN, Journal, Expense, Income, Contra, and Capital vouchers.
+                            </p>
+                            <div className="companySetting-form-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)', gap: '1.5rem', marginBottom: '2.5rem' }}>
+                                {otherTitlesList.map(({ key, label, placeholder }) => (
+                                    <div key={key} className="companySetting-form-group" style={{ marginBottom: 0 }}>
+                                        <label style={{ fontSize: '0.9rem', fontWeight: '500', color: '#374151' }}>{label}</label>
+                                        <input
+                                            type="text"
+                                            value={documentTitles[key] || ''}
+                                            onChange={(e) => setDocumentTitles({ ...documentTitles, [key]: e.target.value })}
+                                            placeholder={`Default: ${placeholder}`}
+                                            style={{ padding: '0.8rem', borderRadius: '8px', border: '1px solid #cbd5e1', width: '100%', fontSize: '0.95rem' }}
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+
+                            <h3 className="companySetting-section-title" style={{ marginTop: '2rem' }}>Voucher &amp; Inventory Serial Numbering</h3>
+                            <p className="companySetting-page-subtitle" style={{ marginBottom: '1.5rem' }}>
+                                Configure custom prefixes, sequence numbers, padding formats, and generation patterns for GRN, Vouchers, Stock Transfer &amp; Adjustments.
+                            </p>
+                            <div className="numbering-settings-grid">
+                                <table className="numbering-settings-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Transaction Type</th>
+                                            <th>Prefix</th>
+                                            <th>Starting Suffix</th>
+                                            <th>Padding Length</th>
+                                            <th>Pattern Type</th>
+                                            <th>Next Number (Preview)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {numberingSettings
+                                            .filter(s => otherTypes.includes(s.transactionType))
+                                            .map((setting) => {
+                                                const index = numberingSettings.findIndex(ns => ns.transactionType === setting.transactionType);
+                                                const displayName = getTransactionTypeDisplayName(setting.transactionType);
+                                                const preview = previewNextNumber(setting);
+                                                return (
+                                                    <tr key={setting.transactionType}>
+                                                        <td className="transaction-type-cell">
+                                                            <strong>{displayName}</strong>
+                                                        </td>
+                                                        <td>
+                                                            <input
+                                                                type="text"
+                                                                value={setting.prefix || ''}
+                                                                onChange={(e) => handleNumberingFieldChange(index, 'prefix', e.target.value)}
+                                                                className="numbering-input-prefix"
+                                                                placeholder="e.g. VCH-"
+                                                            />
+                                                        </td>
+                                                        <td>
+                                                            <input
+                                                                type="number"
+                                                                value={setting.currentNumber}
+                                                                onChange={(e) => handleNumberingFieldChange(index, 'currentNumber', parseInt(e.target.value) || 1)}
+                                                                className="numbering-input-number"
+                                                                min="1"
+                                                            />
+                                                        </td>
+                                                        <td>
+                                                            <select
+                                                                value={setting.paddingLength}
+                                                                onChange={(e) => handleNumberingFieldChange(index, 'paddingLength', parseInt(e.target.value) || 4)}
+                                                                className="numbering-select-padding"
+                                                            >
+                                                                <option value="2">2 (01)</option>
+                                                                <option value="3">3 (001)</option>
+                                                                <option value="4">4 (0001)</option>
+                                                                <option value="5">5 (00001)</option>
+                                                                <option value="6">6 (000001)</option>
+                                                            </select>
+                                                        </td>
+                                                        <td>
+                                                            <select
+                                                                value={setting.pattern}
+                                                                onChange={(e) => handleNumberingFieldChange(index, 'pattern', e.target.value)}
+                                                                className="numbering-select-pattern"
+                                                            >
+                                                                <option value="numeric">Numeric (0001)</option>
+                                                                <option value="alphanumeric">Alphanumeric (000A)</option>
+                                                                <option value="custom">Custom</option>
+                                                            </select>
+                                                        </td>
+                                                        <td className="numbering-preview-cell">
+                                                            <span className="numbering-preview-tag">{preview}</span>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'security' && (
+                        <div className="companySetting-form-section companySetting-fade-in">
+                            <h3 className="companySetting-section-title">Password Management</h3>
+                            <div className="companySetting-form-grid">
+                                <div className="companySetting-form-group full-width">
+                                    <label>Request Password Change</label>
+                                    <p style={{ fontSize: '0.9rem', color: '#666', marginBottom: '1rem' }}>
+                                        Submit a request to change your password. Your administrator will review and approve the request.
+                                    </p>
+                                    <button
+                                        className="companySetting-btn-upload"
+                                        onClick={handlePasswordChangeRequest}
+                                        style={{
+                                            backgroundColor: '#3b82f6',
+                                            color: 'white',
+                                            border: 'none',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '0.5rem'
+                                        }}
+                                    >
+                                        <Lock size={16} /> Request Password Change
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'customFields' && (
+                        <CustomFieldsTab
+                            customFieldsConfig={customFieldsConfig}
+                            setCustomFieldsConfig={setCustomFieldsConfig}
+                        />
+                    )}
+
+                    {activeTab === 'smtp' && (
+                        <div className="companySetting-form-section companySetting-fade-in" style={{ padding: 0, background: 'transparent', border: 'none' }}>
+                            <SmtpSettings isTab={true} />
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Add Template Modal */}
+            {showAddTemplateModal && (
+                <div
+                    style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        backgroundColor: 'rgba(15, 23, 42, 0.65)',
+                        backdropFilter: 'blur(4px)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 9999,
+                        padding: '1rem'
+                    }}
+                    onClick={() => setShowAddTemplateModal(false)}
+                >
+                    <div
+                        style={{
+                            background: '#ffffff',
+                            borderRadius: '16px',
+                            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+                            width: '100%',
+                            maxWidth: '480px',
+                            overflow: 'hidden'
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            padding: '1.25rem 1.5rem',
+                            borderBottom: '1px solid #f1f5f9',
+                            background: '#f8fafc'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <div style={{
+                                    width: '32px',
+                                    height: '32px',
+                                    borderRadius: '8px',
+                                    background: '#eff6ff',
+                                    color: '#2563eb',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                }}>
+                                    <Plus size={18} />
+                                </div>
+                                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '700', color: '#0f172a' }}>
+                                    New Invoice Template
+                                </h3>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setShowAddTemplateModal(false)}
+                                style={{
+                                    border: 'none',
+                                    background: 'transparent',
+                                    color: '#94a3b8',
+                                    cursor: 'pointer',
+                                    padding: '4px',
+                                    borderRadius: '6px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                }}
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        <div style={{ padding: '1.5rem' }}>
+                            <div style={{ marginBottom: '1.25rem' }}>
+                                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', color: '#334155', marginBottom: '0.4rem' }}>
+                                    Template Name <span style={{ color: '#ef4444' }}>*</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    value={newTemplateName}
+                                    onChange={(e) => setNewTemplateName(e.target.value)}
+                                    placeholder="e.g. Modern Crimson, Retail Express, CEA Dark"
+                                    autoFocus
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            handleCreateNewTemplate();
+                                        }
+                                    }}
+                                    style={{
+                                        width: '100%',
+                                        padding: '0.75rem 1rem',
+                                        fontSize: '0.95rem',
+                                        borderRadius: '8px',
+                                        border: '1.5px solid #cbd5e1',
+                                        outline: 'none',
+                                        boxSizing: 'border-box'
+                                    }}
+                                />
+                            </div>
+
+                            <div style={{ marginBottom: '1rem' }}>
+                                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', color: '#334155', marginBottom: '0.5rem' }}>
+                                    Theme Accent Color
+                                </label>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+                                    {['#004aad', '#0ea5e9', '#10b981', '#f59e0b', '#e11d48', '#8b5cf6', '#0f172a', '#334155'].map((c) => (
+                                        <button
+                                            key={c}
+                                            type="button"
+                                            onClick={() => setNewTemplateColor(c)}
+                                            style={{
+                                                width: '32px',
+                                                height: '32px',
+                                                borderRadius: '50%',
+                                                backgroundColor: c,
+                                                border: newTemplateColor === c ? '3px solid #ffffff' : '2px solid transparent',
+                                                boxShadow: newTemplateColor === c ? `0 0 0 2px ${c}` : 'none',
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                padding: 0
+                                            }}
+                                        >
+                                            {newTemplateColor === c && <Check size={14} color="#ffffff" />}
+                                        </button>
+                                    ))}
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <input
+                                        type="color"
+                                        value={newTemplateColor}
+                                        onChange={(e) => setNewTemplateColor(e.target.value)}
+                                        style={{ width: '36px', height: '36px', border: 'none', borderRadius: '6px', cursor: 'pointer', padding: 0 }}
+                                    />
+                                    <input
+                                        type="text"
+                                        value={newTemplateColor}
+                                        onChange={(e) => setNewTemplateColor(e.target.value)}
+                                        placeholder="#000000"
+                                        style={{
+                                            width: '120px',
+                                            padding: '0.5rem 0.75rem',
+                                            fontSize: '0.88rem',
+                                            borderRadius: '6px',
+                                            border: '1px solid #cbd5e1'
+                                        }}
+                                    />
+                                    <span style={{ fontSize: '0.8rem', color: '#64748b' }}>Custom hex color</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'flex-end',
+                            gap: '10px',
+                            padding: '1rem 1.5rem',
+                            borderTop: '1px solid #f1f5f9',
+                            background: '#f8fafc'
+                        }}>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setShowAddTemplateModal(false);
+                                    setNewTemplateName('');
+                                }}
+                                style={{
+                                    padding: '0.6rem 1.2rem',
+                                    borderRadius: '8px',
+                                    border: '1px solid #cbd5e1',
+                                    background: '#ffffff',
+                                    color: '#475569',
+                                    fontSize: '0.9rem',
+                                    fontWeight: '600',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleCreateNewTemplate}
+                                style={{
+                                    padding: '0.6rem 1.4rem',
+                                    borderRadius: '8px',
+                                    border: 'none',
+                                    background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+                                    color: '#ffffff',
+                                    fontSize: '0.9rem',
+                                    fontWeight: '600',
+                                    cursor: 'pointer',
+                                    boxShadow: '0 2px 4px rgba(37, 99, 235, 0.2)'
+                                }}
+                            >
+                                Create Template
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+const CustomFieldsTab = ({ customFieldsConfig, setCustomFieldsConfig }) => {
+    const transactionTypes = [
+        { id: 'invoice', label: 'Sales Invoice' },
+        { id: 'receipt', label: 'Sales Receipt' },
+        { id: 'salesreturn', label: 'Credit Note (Sales Return)' },
+        { id: 'purchasereturn', label: 'Debit Note (Purchase Return)' },
+        { id: 'purchasebill', label: 'Purchase Bill' },
+        { id: 'payment', label: 'Purchase Payment' },
+        { id: 'expense', label: 'Expense' },
+        { id: 'income', label: 'Income' },
+        { id: 'posinvoice', label: 'POS Invoice' },
+        { id: 'salesorder', label: 'Sales Order' },
+        { id: 'salesquotation', label: 'Sales Quotation' },
+        { id: 'purchaseorder', label: 'Purchase Order' },
+        { id: 'purchasequotation', label: 'Purchase Quotation' },
+        { id: 'deliverychallan', label: 'Delivery Challan' },
+        { id: 'goodsreceiptnote', label: 'Goods Receipt Note' },
+        { id: 'voucher', label: 'Voucher' }
+    ];
+
+    const [selectedType, setSelectedType] = useState('invoice');
+
+    // Find fields for the selected transaction type
+    const activeFields = customFieldsConfig.find(item => item.transactionType === selectedType)?.fields || [];
+
+    const handleAddField = () => {
+        const newField = {
+            id: Date.now().toString(),
+            label: '',
+            type: 'text',
+            required: false,
+            options: ''
+        };
+
+        setCustomFieldsConfig(prev => {
+            const copy = JSON.parse(JSON.stringify(prev));
+            const typeConfig = copy.find(item => item.transactionType === selectedType);
+            if (typeConfig) {
+                typeConfig.fields = [...typeConfig.fields, newField];
+            } else {
+                copy.push({
+                    transactionType: selectedType,
+                    fields: [newField]
+                });
+            }
+            return copy;
+        });
+    };
+
+    const handleUpdateField = (fieldId, updatedProps) => {
+        setCustomFieldsConfig(prev => {
+            const copy = JSON.parse(JSON.stringify(prev));
+            const typeConfig = copy.find(item => item.transactionType === selectedType);
+            if (typeConfig) {
+                typeConfig.fields = typeConfig.fields.map(f => f.id === fieldId ? { ...f, ...updatedProps } : f);
+            }
+            return copy;
+        });
+    };
+
+    const handleDeleteField = (fieldId) => {
+        setCustomFieldsConfig(prev => {
+            const copy = JSON.parse(JSON.stringify(prev));
+            const typeConfig = copy.find(item => item.transactionType === selectedType);
+            if (typeConfig) {
+                typeConfig.fields = typeConfig.fields.filter(f => f.id !== fieldId);
+            }
+            return copy;
+        });
+    };
+
+    return (
+        <div className="companySetting-form-section companySetting-fade-in custom-fields-tab-content">
+            <h3 className="companySetting-section-title" style={{ marginBottom: '0.3rem' }}>Custom Fields &amp; Taxonomy</h3>
+            <p style={{ fontSize: '0.88rem', color: '#666', marginBottom: '1.5rem' }}>
+                Define custom input fields for each transaction type. These fields will appear in entry forms and show up in invoice PDFs.
+            </p>
+
+            <div className="custom-fields-selector-row" style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem', flexWrap: 'wrap' }}>
+                <div className="companySetting-form-group" style={{ marginBottom: 0, minWidth: '280px' }}>
+                    <label style={{ fontSize: '0.9rem', fontWeight: 'bold', color: '#1e293b' }}>Select Transaction Type</label>
+                    <select
+                        value={selectedType}
+                        onChange={(e) => setSelectedType(e.target.value)}
+                        style={{ padding: '0.8rem', borderRadius: '8px', border: '1px solid #cbd5e1', width: '100%', fontSize: '0.95rem' }}
+                    >
+                        {transactionTypes.map(t => (
+                            <option key={t.id} value={t.id}>{t.label}</option>
+                        ))}
+                    </select>
+                </div>
+                <button
+                    type="button"
+                    onClick={handleAddField}
+                    className="companySetting-btn-upload"
+                    style={{ backgroundColor: '#1e293b', color: 'white', border: 'none', height: 'fit-content', marginTop: '1.8rem', padding: '0.8rem 1.2rem', fontWeight: '600' }}
+                >
+                    + Add Field
+                </button>
+            </div>
+
+            <div className="custom-fields-list" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {activeFields.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '3rem', border: '2px dashed #e2e8f0', borderRadius: '12px', color: '#94a3b8' }}>
+                        No custom fields configured for this transaction type. Click "+ Add Field" to create one.
+                    </div>
+                ) : (
+                    activeFields.map((field) => (
+                        <div
+                            key={field.id}
+                            className="custom-field-row-card"
+                            style={{
+                                display: 'flex',
+                                gap: '1rem',
+                                padding: '1.2rem',
+                                border: '1px solid #e2e8f0',
+                                borderRadius: '12px',
+                                backgroundColor: '#f8fafc',
+                                flexWrap: 'wrap',
+                                alignItems: 'flex-start',
+                                position: 'relative',
+                                transition: 'all 0.2s'
+                            }}
+                        >
+                            <div className="companySetting-form-group" style={{ flex: '2 1 200px', marginBottom: 0 }}>
+                                <label style={{ fontSize: '0.8rem', fontWeight: '600', color: '#475569' }}>Field Label Name</label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g. Delivery Mode, Payment Method"
+                                    value={field.label}
+                                    onChange={(e) => handleUpdateField(field.id, { label: e.target.value })}
+                                    style={{ padding: '0.6rem 0.8rem', fontSize: '0.9rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                                />
+                            </div>
+
+                            <div className="companySetting-form-group" style={{ flex: '1 1 120px', marginBottom: 0 }}>
+                                <label style={{ fontSize: '0.8rem', fontWeight: '600', color: '#475569' }}>Field Type</label>
+                                <select
+                                    value={field.type}
+                                    onChange={(e) => handleUpdateField(field.id, { type: e.target.value })}
+                                    style={{ padding: '0.6rem 0.8rem', fontSize: '0.9rem', borderRadius: '6px', border: '1px solid #cbd5e1', width: '100%' }}
+                                >
+                                    <option value="text">Text Input</option>
+                                    <option value="select">Dropdown Select</option>
+                                </select>
+                            </div>
+
+                            {field.type === 'select' && (
+                                <div className="companySetting-form-group" style={{ flex: '3 1 250px', marginBottom: 0 }}>
+                                    <label style={{ fontSize: '0.8rem', fontWeight: '600', color: '#475569' }}>Dropdown Options (Comma separated)</label>
+                                    <input
+                                        type="text"
+                                        placeholder="Option 1, Option 2, Option 3"
+                                        value={field.options || ''}
+                                        onChange={(e) => handleUpdateField(field.id, { options: e.target.value })}
+                                        style={{ padding: '0.6rem 0.8rem', fontSize: '0.9rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                                    />
+                                </div>
+                            )}
+
+                            <div className="companySetting-form-group" style={{ flex: '0 0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: '70px', marginBottom: 0 }}>
+                                <label style={{ fontSize: '0.8rem', fontWeight: '600', color: '#475569', marginBottom: '0.6rem' }}>Required?</label>
+                                <label className="switch-label" style={{ margin: 0 }}>
+                                    <input
+                                        type="checkbox"
+                                        className="switch-input"
+                                        checked={field.required || false}
+                                        onChange={(e) => handleUpdateField(field.id, { required: e.target.checked })}
+                                    />
+                                    <div className="switch-toggle" />
+                                </label>
+                            </div>
+
+                            <button
+                                type="button"
+                                onClick={() => handleDeleteField(field.id)}
+                                style={{
+                                    alignSelf: 'center',
+                                    backgroundColor: '#fee2e2',
+                                    color: '#ef4444',
+                                    border: 'none',
+                                    borderRadius: '8px',
+                                    padding: '0.6rem 1rem',
+                                    fontSize: '0.88rem',
+                                    fontWeight: '600',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s',
+                                    marginTop: '1.2rem'
+                                }}
+                            >
+                                Delete
+                            </button>
+                        </div>
+                    ))
+                )}
+            </div>
+        </div>
+    );
+};
+
+export default CompanySettings;

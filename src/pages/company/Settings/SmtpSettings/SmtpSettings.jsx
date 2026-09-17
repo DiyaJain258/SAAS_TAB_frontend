@@ -1,0 +1,776 @@
+import React, { useState, useEffect } from 'react';
+import {
+    Server, Mail, Key, Shield, Send, CheckCircle2,
+    XCircle, AlertCircle, RefreshCw, Eye, EyeOff, Save,
+    Globe, User, Sparkles, X, Check, Trash2
+} from 'lucide-react';
+import toast from 'react-hot-toast';
+import smtpService from '../../../../api/smtpService';
+import GetCompanyId from '../../../../api/GetCompanyId';
+import './SmtpSettings.css';
+
+const SmtpSettings = ({ isTab = false }) => {
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [testingConn, setTestingConn] = useState(false);
+    const [sendingTest, setSendingTest] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
+
+    // Test Email Modal
+    const [showTestModal, setShowTestModal] = useState(false);
+    const [testRecipient, setTestRecipient] = useState('');
+
+    // Form fields (blank by default as requested)
+    const [formData, setFormData] = useState({
+        host: '',
+        ip: '',
+        port: 587,
+        security: 'TLS',
+        username: '',
+        password: '',
+        fromEmail: '',
+        fromName: '',
+        invoiceSubjectTemplate: 'Invoice #{InvoiceNumber} from {CompanyName}',
+        invoiceBodyTemplate: 'Dear {CustomerName},\n\nPlease find attached your invoice #{InvoiceNumber} for {InvoiceAmount}, due on {DueDate}.\n\nYou can also review and pay your invoice online through our secure portal.\n\nThank you for your business.\n\nKind regards,\n{CompanyName}',
+        hasPassword: false,
+        isConfigured: false,
+        lastTestedAt: null,
+        lastTestStatus: null
+    });
+
+    const companyId = GetCompanyId();
+
+    const fetchSettings = async () => {
+        try {
+            setLoading(true);
+            const res = await smtpService.getSettings(companyId);
+            if (res.data?.success && res.data.data) {
+                const data = res.data.data;
+                setFormData({
+                    host: data.host || '',
+                    ip: data.ip || '',
+                    port: data.port || 587,
+                    security: data.security || 'TLS',
+                    username: data.username || '',
+                    password: data.hasPassword ? '••••••••' : '',
+                    fromEmail: data.fromEmail || '',
+                    fromName: data.fromName || '',
+                    invoiceSubjectTemplate: data.invoiceSubjectTemplate || 'Invoice #{InvoiceNumber} from {CompanyName}',
+                    invoiceBodyTemplate: data.invoiceBodyTemplate || 'Dear {CustomerName},\n\nPlease find attached your invoice #{InvoiceNumber} for {InvoiceAmount}, due on {DueDate}.\n\nYou can also review and pay your invoice online through our secure portal.\n\nThank you for your business.\n\nKind regards,\n{CompanyName}',
+                    hasPassword: Boolean(data.hasPassword),
+                    isConfigured: Boolean(data.isConfigured),
+                    lastTestedAt: data.lastTestedAt,
+                    lastTestStatus: data.lastTestStatus
+                });
+                setTestRecipient('');
+            }
+        } catch (err) {
+            console.error('Error fetching SMTP settings:', err);
+            toast.error(err.response?.data?.message || 'Failed to load SMTP settings');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchSettings();
+    }, [companyId]);
+
+    const handlePortSelect = (portNum, securityType) => {
+        setFormData(prev => ({
+            ...prev,
+            port: portNum,
+            security: securityType || prev.security
+        }));
+    };
+
+    const handleSave = async (e) => {
+        if (e) e.preventDefault();
+        try {
+            setSaving(true);
+            const res = await smtpService.updateSettings(formData, companyId);
+            if (res.data?.success) {
+                toast.success(res.data.message || 'SMTP settings saved successfully');
+                const saved = res.data.data;
+                setFormData(prev => ({
+                    ...prev,
+                    host: saved.host || '',
+                    ip: saved.ip || '',
+                    port: saved.port || 587,
+                    security: saved.security || 'TLS',
+                    username: saved.username || '',
+                    fromEmail: saved.fromEmail || '',
+                    fromName: saved.fromName || '',
+                    hasPassword: Boolean(saved.hasPassword),
+                    isConfigured: Boolean(saved.isConfigured),
+                    lastTestedAt: saved.lastTestedAt,
+                    lastTestStatus: saved.lastTestStatus,
+                    password: saved.hasPassword ? '••••••••' : ''
+                }));
+            } else {
+                toast.error(res.data?.message || 'Failed to save SMTP settings');
+            }
+        } catch (err) {
+            toast.error(err.response?.data?.message || err.message || 'Error saving SMTP settings');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleClear = async () => {
+        if (!window.confirm('Are you sure you want to remove and clear all saved SMTP credentials?')) {
+            return;
+        }
+        try {
+            setSaving(true);
+            const res = await smtpService.clearSettings(companyId);
+            if (res.data?.success) {
+                toast.success('SMTP credentials and settings removed successfully');
+                setFormData({
+                    host: '',
+                    ip: '',
+                    port: 587,
+                    security: 'TLS',
+                    username: '',
+                    password: '',
+                    fromEmail: '',
+                    fromName: '',
+                    invoiceSubjectTemplate: 'Invoice #{InvoiceNumber} from {CompanyName}',
+                    invoiceBodyTemplate: 'Dear {CustomerName},\n\nPlease find attached your invoice #{InvoiceNumber} for {InvoiceAmount}, due on {DueDate}.\n\nYou can also review and pay your invoice online through our secure portal.\n\nThank you for your business.\n\nKind regards,\n{CompanyName}',
+                    hasPassword: false,
+                    isConfigured: false,
+                    lastTestedAt: null,
+                    lastTestStatus: null
+                });
+                setTestRecipient('');
+            } else {
+                toast.error(res.data?.message || 'Failed to clear SMTP settings');
+            }
+        } catch (err) {
+            toast.error(err.response?.data?.message || err.message || 'Error clearing SMTP settings');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleTestConnection = async () => {
+        if (!formData.host || !formData.username) {
+            toast.error('Please enter at least Host and Username to test connection');
+            return;
+        }
+
+        try {
+            setTestingConn(true);
+            const res = await smtpService.testConnection(formData, companyId);
+            if (res.data?.success) {
+                toast.success(res.data.message || 'SMTP Connection established successfully!');
+                setFormData(prev => ({
+                    ...prev,
+                    lastTestedAt: new Date().toISOString(),
+                    lastTestStatus: 'SUCCESS'
+                }));
+            } else {
+                toast.error(res.data?.message || 'SMTP Connection failed');
+                setFormData(prev => ({
+                    ...prev,
+                    lastTestedAt: new Date().toISOString(),
+                    lastTestStatus: 'FAILED'
+                }));
+            }
+        } catch (err) {
+            let errorText = err.response?.data?.message;
+            if (!errorText) {
+                if (err.message === 'Network Error' || err.response?.status === 502) {
+                    errorText = 'Network / Server timeout. Unable to reach the SMTP server (port 465/587). Please check your SMTP settings or verify if outbound SMTP ports are open on your VPS/server.';
+                } else {
+                    errorText = err.message || 'SMTP Connection test failed';
+                }
+            }
+            toast.error(errorText, { duration: 6000 });
+            setFormData(prev => ({
+                ...prev,
+                lastTestedAt: new Date().toISOString(),
+                lastTestStatus: 'FAILED'
+            }));
+        } finally {
+            setTestingConn(false);
+        }
+    };
+
+    const handleSendTestEmail = async (e) => {
+        if (e) e.preventDefault();
+        if (!testRecipient || !testRecipient.includes('@')) {
+            toast.error('Please enter a valid recipient email address');
+            return;
+        }
+
+        try {
+            setSendingTest(true);
+            const res = await smtpService.sendTestEmail({
+                ...formData,
+                toEmail: testRecipient
+            }, companyId);
+
+            if (res.data?.success) {
+                toast.success(res.data.message || `Test email sent to ${testRecipient}`);
+                setShowTestModal(false);
+                setTestRecipient('');
+                setFormData(prev => ({
+                    ...prev,
+                    lastTestedAt: new Date().toISOString(),
+                    lastTestStatus: 'SUCCESS'
+                }));
+            } else {
+                toast.error(res.data?.message || 'Failed to send test email');
+            }
+        } catch (err) {
+            let errorText = err.response?.data?.message;
+            if (!errorText) {
+                if (err.message === 'Network Error' || err.response?.status === 502) {
+                    errorText = 'Network / Server timeout. Unable to reach the SMTP server (port 465/587). Please check your SMTP settings or verify if outbound SMTP ports are open on your VPS/server.';
+                } else {
+                    errorText = err.message || 'Failed to send test email';
+                }
+            }
+            toast.error(errorText, { duration: 6000 });
+        } finally {
+            setSendingTest(false);
+        }
+    };
+
+    const containerClassName = isTab ? 'smtp-tab-wrapper' : 'smtp-settings-page';
+
+    if (loading) {
+        return (
+            <div className={containerClassName} style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '300px' }}>
+                <RefreshCw size={28} className="animate-spin text-slate-500" />
+            </div>
+        );
+    }
+
+    return (
+        <div className={containerClassName}>
+            {/* Header (standalone view only) */}
+            {!isTab && (
+                <div className="smtp-page-header">
+                    <div>
+                        <h1 className="smtp-page-title">Email &amp; SMTP Settings</h1>
+                        <p className="smtp-page-subtitle">
+                            Configure company-specific SMTP server credentials to automatically send invoice emails to customers.
+                        </p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <span className={`smtp-status-badge ${formData.isConfigured ? 'configured' : 'unconfigured'}`}>
+                            <span className="smtp-status-dot" />
+                            {formData.isConfigured ? 'SMTP Configured & Active' : 'SMTP Not Configured'}
+                        </span>
+                    </div>
+                </div>
+            )}
+
+            {/* Diagnostic Banner */}
+            {formData.lastTestedAt && (
+                <div className={`smtp-diagnostic-banner ${formData.lastTestStatus === 'SUCCESS' ? 'success' : 'failed'}`}>
+                    <div className="flex items-center gap-3">
+                        {formData.lastTestStatus === 'SUCCESS' ? (
+                            <CheckCircle2 size={20} className="text-emerald-600 flex-shrink-0" />
+                        ) : (
+                            <XCircle size={20} className="text-red-500 flex-shrink-0" />
+                        )}
+                        <div>
+                            <span className="font-semibold text-slate-800 text-sm">
+                                {formData.lastTestStatus === 'SUCCESS' ? 'Last connection verified successfully' : 'Last connection attempt failed'}
+                            </span>
+                            <span className="text-xs text-slate-500 block">
+                                {new Date(formData.lastTestedAt).toLocaleString()}
+                            </span>
+                        </div>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={handleTestConnection}
+                        disabled={testingConn}
+                        className="smtp-port-pill"
+                        style={{ border: 'none', background: '#f1f5f9', cursor: 'pointer' }}
+                    >
+                        {testingConn ? 'Retesting...' : 'Retest Now'}
+                    </button>
+                </div>
+            )}
+
+            <form onSubmit={handleSave} autoComplete="off">
+                {/* Decoy fields to intercept aggressive browser password managers from auto-filling personal credentials */}
+                <input type="text" style={{ display: 'none' }} tabIndex="-1" autoComplete="off" />
+                <input type="password" style={{ display: 'none' }} tabIndex="-1" autoComplete="off" />
+
+                {/* Card 1: Server Configuration */}
+                <div className="smtp-card">
+                    <div className="smtp-card-header">
+                        <div className="smtp-card-icon">
+                            <Server size={20} />
+                        </div>
+                        <div>
+                            <h2 className="smtp-card-title">SMTP Server Configuration</h2>
+                            <p className="smtp-card-desc">
+                                Connection endpoints and encryption parameters for your outgoing mail server.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="smtp-form-grid">
+                        <div className="smtp-form-group">
+                            <label className="smtp-label">
+                                SMTP Host
+                            </label>
+                            <div className="smtp-input-wrapper">
+                                <Server size={16} className="smtp-input-icon" />
+                                <input
+                                    type="text"
+                                    name="custom_smtp_server_hostname"
+                                    id="custom_smtp_server_hostname"
+                                    className="smtp-input"
+                                    placeholder="e.g. smtp.gmail.com, mail.yourdomain.com"
+                                    value={formData.host}
+                                    onChange={(e) => setFormData({ ...formData, host: e.target.value })}
+                                    autoComplete="off"
+                                />
+                            </div>
+                            <span className="smtp-hint">Mail server domain or hostname</span>
+                        </div>
+
+                        <div className="smtp-form-group">
+                            <label className="smtp-label">
+                                Server IP <span style={{ color: '#94a3b8', fontWeight: 400 }}>(Optional)</span>
+                            </label>
+                            <div className="smtp-input-wrapper">
+                                <Globe size={16} className="smtp-input-icon" />
+                                <input
+                                    type="text"
+                                    name="custom_smtp_server_ip_binding"
+                                    id="custom_smtp_server_ip_binding"
+                                    className="smtp-input"
+                                    placeholder="e.g. 192.168.1.10"
+                                    value={formData.ip}
+                                    onChange={(e) => setFormData({ ...formData, ip: e.target.value })}
+                                    autoComplete="off"
+                                />
+                            </div>
+                            <span className="smtp-hint">Optional specific IP binding address</span>
+                        </div>
+
+                        <div className="smtp-form-group">
+                            <label className="smtp-label">
+                                Port
+                            </label>
+                            <input
+                                type="number"
+                                name="custom_smtp_server_port_num"
+                                id="custom_smtp_server_port_num"
+                                className="smtp-input no-icon"
+                                placeholder="587"
+                                value={formData.port}
+                                onChange={(e) => setFormData({ ...formData, port: e.target.value })}
+                                autoComplete="off"
+                            />
+                            <div className="smtp-port-pills">
+                                <button
+                                    type="button"
+                                    className={`smtp-port-pill ${Number(formData.port) === 587 ? 'active' : ''}`}
+                                    onClick={() => handlePortSelect(587, 'TLS')}
+                                >
+                                    587 (TLS / STARTTLS)
+                                </button>
+                                <button
+                                    type="button"
+                                    className={`smtp-port-pill ${Number(formData.port) === 465 ? 'active' : ''}`}
+                                    onClick={() => handlePortSelect(465, 'SSL')}
+                                >
+                                    465 (SSL)
+                                </button>
+                                <button
+                                    type="button"
+                                    className={`smtp-port-pill ${Number(formData.port) === 25 ? 'active' : ''}`}
+                                    onClick={() => handlePortSelect(25, 'NONE')}
+                                >
+                                    25 (Plain)
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="smtp-form-group">
+                            <label className="smtp-label">
+                                Security / Encryption
+                            </label>
+                            <div className="smtp-input-wrapper">
+                                <Shield size={16} className="smtp-input-icon" />
+                                <select
+                                    className="smtp-select"
+                                    value={formData.security}
+                                    onChange={(e) => setFormData({ ...formData, security: e.target.value })}
+                                >
+                                    <option value="TLS">TLS (STARTTLS - Recommended for Port 587)</option>
+                                    <option value="SSL">SSL / SMTPS (Implicit SSL - Port 465)</option>
+                                    <option value="NONE">None (Plaintext - Port 25 / Internal)</option>
+                                </select>
+                            </div>
+                            <span className="smtp-hint">Protocol used to secure outbound socket communication</span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Card 2: Authentication & Sender Details */}
+                <div className="smtp-card">
+                    <div className="smtp-card-header">
+                        <div className="smtp-card-icon">
+                            <Key size={20} />
+                        </div>
+                        <div>
+                            <h2 className="smtp-card-title">Authentication &amp; Sender Information</h2>
+                            <p className="smtp-card-desc">
+                                Credentials used to authenticate with the SMTP server and identity shown to customers.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="smtp-form-grid">
+                        <div className="smtp-form-group">
+                            <label className="smtp-label">
+                                Username
+                            </label>
+                            <div className="smtp-input-wrapper">
+                                <User size={16} className="smtp-input-icon" />
+                                <input
+                                    type="text"
+                                    name="custom_smtp_acct_username"
+                                    id="custom_smtp_acct_username"
+                                    className="smtp-input"
+                                    placeholder="e.g. billing@yourcompany.com"
+                                    value={formData.username}
+                                    onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                                    autoComplete="one-time-code"
+                                />
+                            </div>
+                            <span className="smtp-hint">Typically your email address or account username</span>
+                        </div>
+
+                        <div className="smtp-form-group">
+                            <label className="smtp-label">
+                                Password
+                            </label>
+                            <div className="smtp-input-wrapper">
+                                <Key size={16} className="smtp-input-icon" />
+                                <input
+                                    type={showPassword ? 'text' : 'password'}
+                                    name="custom_smtp_acct_password"
+                                    id="custom_smtp_acct_password"
+                                    className="smtp-input"
+                                    placeholder={formData.hasPassword ? '••••••••' : 'Enter SMTP password'}
+                                    value={formData.password}
+                                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                                    autoComplete="new-password"
+                                />
+                                <button
+                                    type="button"
+                                    className="smtp-toggle-pass-btn"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                >
+                                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                </button>
+                            </div>
+                            <span className="smtp-hint">
+                                {formData.hasPassword ? (
+                                    <span className="text-emerald-600 font-medium">
+                                        ✓ Encrypted in database (AES-256). Leave unchanged to keep current.
+                                    </span>
+                                ) : (
+                                    'Encrypted with AES-256-GCM before saving to database.'
+                                )}
+                            </span>
+                            {(formData.host || '').toLowerCase().includes('gmail') && (
+                                <div style={{ marginTop: '8px', fontSize: '12px', color: '#92400e', background: '#fef3c7', border: '1px solid #fde68a', borderRadius: '6px', padding: '8px 12px', lineHeight: '1.4' }}>
+                                    💡 <strong>Gmail Requirement:</strong> Google requires a 16-character <strong>App Password</strong> (e.g. <code>abcd efgh ijkl mnop</code>), not your standard account password. Generate one at <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer" style={{ color: '#b45309', textDecoration: 'underline', fontWeight: 600 }}>Google Account → Security → 2-Step Verification → App Passwords</a>.
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="smtp-form-group">
+                            <label className="smtp-label">
+                                From Email
+                            </label>
+                            <div className="smtp-input-wrapper">
+                                <Mail size={16} className="smtp-input-icon" />
+                                <input
+                                    type="email"
+                                    name="custom_smtp_sender_email_addr"
+                                    id="custom_smtp_sender_email_addr"
+                                    className="smtp-input"
+                                    placeholder="e.g. invoices@yourcompany.com"
+                                    value={formData.fromEmail}
+                                    onChange={(e) => setFormData({ ...formData, fromEmail: e.target.value })}
+                                    autoComplete="one-time-code"
+                                />
+                            </div>
+                            <span className="smtp-hint">Sender email address displayed on invoice emails</span>
+                        </div>
+
+                        <div className="smtp-form-group">
+                            <label className="smtp-label">
+                                From Name
+                            </label>
+                            <div className="smtp-input-wrapper">
+                                <User size={16} className="smtp-input-icon" />
+                                <input
+                                    type="text"
+                                    name="custom_smtp_sender_display_name"
+                                    id="custom_smtp_sender_display_name"
+                                    className="smtp-input"
+                                    placeholder="e.g. Acme Corp Billing"
+                                    value={formData.fromName}
+                                    onChange={(e) => setFormData({ ...formData, fromName: e.target.value })}
+                                    autoComplete="off"
+                                />
+                            </div>
+                            <span className="smtp-hint">Sender name displayed in customer's email inbox</span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Card 3: Default Invoice Email Template */}
+                <div className="smtp-card">
+                    <div className="smtp-card-header">
+                        <div className="smtp-card-icon" style={{ background: '#ecfdf5', color: '#059669' }}>
+                            <Mail size={20} />
+                        </div>
+                        <div>
+                            <h2 className="smtp-card-title">Default Invoice Email Template</h2>
+                            <p className="smtp-card-desc">
+                                Configure the pre-filled email subject and message body used when sending invoices to customers.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div style={{ marginBottom: '16px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px 16px' }}>
+                        <div style={{ fontSize: '11px', fontWeight: 700, color: '#475569', marginBottom: '8px', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                            Click to insert placeholders into message body:
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                            {[
+                                { tag: '{CustomerName}', label: 'Customer Name' },
+                                { tag: '{InvoiceNumber}', label: 'Invoice #' },
+                                { tag: '{InvoiceAmount}', label: 'Total Amount' },
+                                { tag: '{DueDate}', label: 'Due Date' },
+                                { tag: '{CompanyName}', label: 'Company Name' }
+                            ].map(({ tag, label }) => (
+                                <button
+                                    key={tag}
+                                    type="button"
+                                    onClick={() => {
+                                        setFormData(prev => ({
+                                            ...prev,
+                                            invoiceBodyTemplate: (prev.invoiceBodyTemplate || '') + ' ' + tag
+                                        }));
+                                        toast.success(`Inserted ${tag}`);
+                                    }}
+                                    style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '5px',
+                                        background: '#ffffff',
+                                        border: '1px solid #cbd5e1',
+                                        borderRadius: '6px',
+                                        padding: '4px 10px',
+                                        fontSize: '12px',
+                                        fontWeight: 600,
+                                        color: '#0f172a',
+                                        cursor: 'pointer',
+                                        boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
+                                    }}
+                                    title={`Click to insert ${tag} into message body`}
+                                >
+                                    <span style={{ color: '#2563eb' }}>{tag}</span>
+                                    <span style={{ color: '#64748b', fontSize: '11px', fontWeight: 400 }}>({label})</span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="smtp-form-group" style={{ marginBottom: '16px' }}>
+                        <label className="smtp-label">
+                            Email Subject Template
+                        </label>
+                        <div className="smtp-input-wrapper">
+                            <input
+                                type="text"
+                                className="smtp-input no-icon"
+                                placeholder="e.g. Invoice #{InvoiceNumber} from {CompanyName}"
+                                value={formData.invoiceSubjectTemplate}
+                                onChange={(e) => setFormData({ ...formData, invoiceSubjectTemplate: e.target.value })}
+                            />
+                        </div>
+                        <span className="smtp-hint">Dynamic placeholders like <code>&#123;InvoiceNumber&#125;</code> and <code>&#123;CompanyName&#125;</code> will be substituted automatically.</span>
+                    </div>
+
+                    <div className="smtp-form-group">
+                        <label className="smtp-label">
+                            Email Message Body Template
+                        </label>
+                        <textarea
+                            className="smtp-input no-icon"
+                            rows={7}
+                            style={{ minHeight: '140px', padding: '10px 12px', lineHeight: '1.5', fontFamily: 'inherit', resize: 'vertical' }}
+                            placeholder="Write your email body template..."
+                            value={formData.invoiceBodyTemplate}
+                            onChange={(e) => setFormData({ ...formData, invoiceBodyTemplate: e.target.value })}
+                        />
+                        <span className="smtp-hint">Supports multi-line text and dynamic placeholders.</span>
+                    </div>
+                </div>
+
+                {/* Actions Footer Bar */}
+                <div className="smtp-actions-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                    <div>
+                        <button
+                            type="button"
+                            onClick={handleClear}
+                            disabled={saving || testingConn}
+                            className="smtp-btn"
+                            style={{
+                                background: '#fff1f2',
+                                color: '#e11d48',
+                                border: '1px solid #fecdd3',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px'
+                            }}
+                            title="Remove all saved credentials and reset fields"
+                        >
+                            <Trash2 size={16} /> Clear / Remove Credentials
+                        </button>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                        <button
+                            type="button"
+                            onClick={handleTestConnection}
+                            disabled={testingConn || !formData.host || !formData.username}
+                            className="smtp-btn smtp-btn-secondary"
+                        >
+                            {testingConn ? (
+                                <>
+                                    <RefreshCw size={16} className="animate-spin" /> Verifying Connection...
+                                </>
+                            ) : (
+                                <>
+                                    <Server size={16} /> Test Connection
+                                </>
+                            )}
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setTestRecipient('');
+                                setShowTestModal(true);
+                            }}
+                            disabled={!formData.host || !formData.username}
+                            className="smtp-btn smtp-btn-secondary"
+                        >
+                            <Send size={16} /> Send Test Email
+                        </button>
+
+                        <button
+                            type="submit"
+                            disabled={saving}
+                            className="smtp-btn smtp-btn-primary"
+                        >
+                            {saving ? (
+                                <>
+                                    <RefreshCw size={16} className="animate-spin" /> Saving...
+                                </>
+                            ) : (
+                                <>
+                                    <Save size={16} /> Save Configuration
+                                </>
+                            )}
+                        </button>
+                    </div>
+                </div>
+            </form>
+
+            {/* Test Email Modal */}
+            {showTestModal && (
+                <div className="smtp-modal-overlay">
+                    <div className="smtp-modal">
+                        <div className="smtp-modal-header">
+                            <h3 className="smtp-modal-title flex items-center gap-2">
+                                <Send size={18} className="text-slate-700" /> Send Test Email
+                            </h3>
+                            <button
+                                type="button"
+                                className="smtp-modal-close"
+                                onClick={() => {
+                                    setTestRecipient('');
+                                    setShowTestModal(false);
+                                }}
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <form onSubmit={handleSendTestEmail}>
+                            <div className="smtp-modal-body">
+                                <p style={{ fontSize: '0.88rem', color: '#64748b', marginBottom: '1rem', lineHeight: 1.4 }}>
+                                    Send a verification email through your configured SMTP server ({formData.host || 'your host'}) to verify real email delivery.
+                                </p>
+                                <div className="smtp-form-group">
+                                    <label className="smtp-label">Recipient Email Address <span className="smtp-required">*</span></label>
+                                    <div className="smtp-input-wrapper">
+                                        <Mail size={16} className="smtp-input-icon" />
+                                        <input
+                                            type="email"
+                                            className="smtp-input"
+                                            placeholder="youremail@example.com"
+                                            value={testRecipient}
+                                            onChange={(e) => setTestRecipient(e.target.value)}
+                                            required
+                                            autoFocus
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="smtp-modal-footer">
+                                <button
+                                    type="button"
+                                    className="smtp-btn smtp-btn-secondary"
+                                    onClick={() => {
+                                        setTestRecipient('');
+                                        setShowTestModal(false);
+                                    }}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={sendingTest}
+                                    className="smtp-btn smtp-btn-primary"
+                                >
+                                    {sendingTest ? (
+                                        <>
+                                            <RefreshCw size={16} className="animate-spin" /> Sending...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Send size={16} /> Send Now
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+export default SmtpSettings;
